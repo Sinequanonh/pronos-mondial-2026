@@ -100,11 +100,20 @@ async function maybeRefresh() {
 const app = express();
 app.use(express.json({ limit: '256kb' }));
 app.use((req, res, next) => { ready.then(() => next(), (e) => res.status(500).json({ error: 'init: ' + e.message })); });
-app.use(express.static(path.join(__dirname, 'public'), { index: false }));
+app.use(express.static(path.join(__dirname, 'public'), {
+  index: false,
+  setHeaders: (res, p) => { if (p.endsWith('.html')) res.setHeader('Cache-Control', 'no-store'); },
+}));
+
+// les pages HTML ne doivent jamais être servies depuis le cache (sinon vieux JS bootstrap)
+const sendHtml = (res, file) => {
+  res.set('Cache-Control', 'no-store, must-revalidate');
+  res.sendFile(path.join(__dirname, 'public', file));
+};
 
 // ---------- pages ----------
-app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
-app.get('/p/:token', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'pool.html')));
+app.get('/', (_req, res) => sendHtml(res, 'admin.html'));
+app.get('/p/:token', (_req, res) => sendHtml(res, 'pool.html'));
 
 // ---------- API participant ----------
 app.get('/api/pool/:token', ah(async (req, res) => {
