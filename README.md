@@ -61,26 +61,40 @@ La clé est dans `data/config.json` (ou env `ADMIN_KEY`), affichée au démarrag
 | `ADMIN_KEY` | générée dans `data/config.json`          |
 | `FEED_URL`  | feed fixturedownload World Cup 2026      |
 
-## Déployer (pour partager les liens)
+## Déployer
 
-Tout tient dans **un process Node + un fichier SQLite** (`data/pronos.db`).
-Il faut donc un hébergeur avec process permanent et disque persistant.
+L'app a deux modes :
+- **serveur long** (local, Railway, Docker, VPS) : SQLite fichier + tâches de fond
+  (`setInterval`) — rien à configurer ;
+- **serverless (Vercel)** : base **Turso** (SQLite hébergé) + synchros « à la
+  demande » déclenchées par les requêtes des joueurs (le front polle toutes les
+  60 s, donc le live reste vivant) + cron quotidien en filet de sécurité.
 
-**⚠️ Pas Vercel tel quel** : serverless = pas de `setInterval` (synchro 30 min,
-live ESPN 60 s) et pas de disque persistant pour le SQLite. Adapter pour Vercel
-demanderait de remplacer SQLite par Turso/Neon et de passer les synchros en
-« à la demande » — faisable, mais c'est un refactor.
+### Vercel (repo importé → il manque la base)
 
-**Railway (recommandé, même confort que Vercel)** :
-1. Pousser le repo sur GitHub.
-2. [railway.app](https://railway.app) → New Project → Deploy from GitHub repo.
-3. Dans le service : Settings → Volumes → monter un volume sur `/app/data`.
-4. Settings → Networking → Generate Domain. C'est tout : auto-deploy à chaque push.
-   (Optionnel : variable `ADMIN_KEY` pour fixer la clé admin.)
+1. **Créer la base Turso** (gratuit) :
+   ```bash
+   brew install tursodatabase/tap/turso
+   turso auth signup
+   turso db create pronos2026 --location cdg     # cdg = Paris
+   turso db show pronos2026 --url                # → TURSO_DATABASE_URL
+   turso db tokens create pronos2026             # → TURSO_AUTH_TOKEN
+   ```
+2. **Variables d'environnement Vercel** (Project → Settings → Environment Variables) :
+   - `TURSO_DATABASE_URL` = `libsql://pronos2026-….turso.io`
+   - `TURSO_AUTH_TOKEN` = le token
+   - `ADMIN_KEY` = une clé de ton choix (obligatoire en serverless)
+   - `CRON_SECRET` = au choix (protège `/api/cron`)
+3. (Conseillé) Settings → Functions → Region : **Paris/cdg1** (même région que Turso).
+4. **Redéployer** (ou `git push`). La première visite crée le schéma, synchronise
+   les 104 matchs et crée les pools Famille (FR) et Amis (EN).
+5. Récupérer les liens : `https://<projet>.vercel.app/?key=<ADMIN_KEY>`.
 
-**Fly.io / VPS / home-server** : le `Dockerfile` du repo suffit
-(`docker run -p 3026:3026 -v pronos-data:/app/data …`). Derrière un domaine,
-n'importe quel reverse proxy (Caddy, nginx, Cloudflare Tunnel) fait l'affaire.
+### Railway / Docker / VPS (zéro config)
+
+Railway : New Project → Deploy from GitHub repo → Volume monté sur `/app/data`
+→ Generate Domain. Ou le `Dockerfile` du repo :
+`docker run -p 3026:3026 -v pronos-data:/app/data …`
 
 ## Stack
 

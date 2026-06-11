@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const { db, DATA_DIR, getMeta } = require('./lib/db');
+const { all, get, run, batch, initDb, getMeta, setMeta, DATA_DIR, ON_VERCEL } = require('./lib/db');
 const { sync, SOURCES } = require('./lib/sync');
 const { pollLive } = require('./lib/live');
 const { pointsFor, leaderboard } = require('./lib/scoring');
@@ -11,52 +11,87 @@ const { TEAMS } = require('./lib/teams');
 const PORT = process.env.PORT || 3026;
 const SYNC_EVERY_MS = 30 * 60 * 1000;
 
-// ---------- config (clé admin persistée) ----------
-const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
-let config = {};
-if (fs.existsSync(CONFIG_FILE)) config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-if (process.env.ADMIN_KEY) config.adminKey = process.env.ADMIN_KEY;
-if (!config.adminKey) {
-  config.adminKey = crypto.randomBytes(16).toString('base64url');
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
-}
-
 const token = () => crypto.randomBytes(8).toString('base64url');
 const hashPin = (pin) => crypto.createHash('sha256').update(String(pin)).digest('hex');
 const locked = (m) => Date.parse(m.date_utc) <= Date.now();
 const finished = (m) => m.home_score != null && m.away_score != null;
 
-// ---------- pools par défaut au premier lancement ----------
-if (db.prepare('SELECT COUNT(*) AS n FROM pools').get().n === 0) {
-  const ins = db.prepare('INSERT INTO pools (token, name) VALUES (?, ?)');
-  ins.run(token(), 'Famille');
-  ins.run(token(), 'Amis');
+// wrapper d'erreurs pour handlers async (Express 4)
+const ah = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((err) => {
+  console.error('[api]', err);
+  if (!res.headersSent) res.status(500).json({ error: 'Erreur serveur' });
+});
+
+// ---------- config (clé admin : env > data/config.json > générée) ----------
+let adminKey = process.env.ADMIN_KEY || null;
+function ensureConfig() {
+  if (adminKey) return;
+  const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+  try { adminKey = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')).adminKey; } catch { /* absent */ }
+  if (!adminKey) {
+    adminKey = crypto.randomBytes(16).toString('base64url');
+    try { fs.writeFileSync(CONFIG_FILE, JSON.stringify({ adminKey }, null, 2)); }
+    catch { console.warn('[config] FS en lecture seule — définis ADMIN_KEY en variable d\'environnement pour une clé stable'); }
+  }
+}
+
+async function seedPools() {
+  const n = (await get('SELECT COUNT(*) AS n FROM pools')).n;
+  if (n === 0) {
+    await run('INSERT INTO pools (token, name, lang) VALUES (?, ?, ?)', [token(), 'Famille', 'fr']);
+    await run('INSERT INTO pools (token, name, lang) VALUES (?, ?, ?)', [token(), 'Amis', 'en']);
+  }
+}
+
+const ready = (async () => {
+  await initDb();
+  ensureConfig();
+  await seedPools();
+})();
+ready.catch((e) => console.error('[init]', e.message));
+
+// ---------- fraîcheur à la demande (pas de tâches de fond en serverless) ----------
+let lastFreshCheck = 0;
+async function maybeRefresh() {
+  if (Date.now() - lastFreshCheck < 20000) return; // anti-rafale par instance
+  lastFreshCheck = Date.now();
+
+  const lastSync = await getMeta('last_sync');
+  if (!lastSync || Date.now() - Date.parse(lastSync) > SYNC_EVERY_MS) {
+    await sync().catch((e) => console.warn('[sync]', e.message));
+    return;
+  }
+  const lastLive = Number(await getMeta('last_live_poll')) || 0;
+  if (Date.now() - lastLive > 50000) {
+    await setMeta('last_live_poll', String(Date.now()));
+    await pollLive().catch((e) => console.warn('[live]', e.message));
+  }
 }
 
 const app = express();
 app.use(express.json({ limit: '256kb' }));
+app.use((req, res, next) => { ready.then(() => next(), (e) => res.status(500).json({ error: 'init: ' + e.message })); });
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
-
-const getPool = db.prepare('SELECT * FROM pools WHERE token = ?');
-const getPlayerByKey = db.prepare('SELECT * FROM players WHERE key = ?');
 
 // ---------- pages ----------
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 app.get('/p/:token', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'pool.html')));
 
 // ---------- API participant ----------
-app.get('/api/pool/:token', (req, res) => {
-  const pool = getPool.get(req.params.token);
+app.get('/api/pool/:token', ah(async (req, res) => {
+  await maybeRefresh();
+
+  const pool = await get('SELECT * FROM pools WHERE token = ?', [req.params.token]);
   if (!pool) return res.status(404).json({ error: 'Pool introuvable' });
 
   let me = null;
   const key = req.get('x-player-key');
   if (key) {
-    const p = getPlayerByKey.get(key);
+    const p = await get('SELECT * FROM players WHERE key = ?', [key]);
     if (p && p.pool_id === pool.id) me = { id: p.id, name: p.name };
   }
 
-  const matches = db.prepare('SELECT * FROM matches ORDER BY id').all().map((m) => ({
+  const matches = (await all('SELECT * FROM matches ORDER BY id')).map((m) => ({
     id: m.id,
     stage: m.stage,
     round: m.round,
@@ -77,11 +112,11 @@ app.get('/api/pool/:token', (req, res) => {
   }));
   const matchById = new Map(matches.map((m) => [m.id, m]));
 
-  const allPreds = db.prepare(`
+  const allPreds = await all(`
     SELECT pr.match_id, pr.home, pr.away, pl.id AS player_id, pl.name AS player_name
     FROM predictions pr JOIN players pl ON pl.id = pr.player_id
     WHERE pl.pool_id = ?
-  `).all(pool.id);
+  `, [pool.id]);
 
   const mine = {};
   const others = {};
@@ -96,7 +131,7 @@ app.get('/api/pool/:token', (req, res) => {
         name: pr.player_name,
         h: pr.home,
         a: pr.away,
-        pts: finishedPts(m, pr),
+        pts: m.finished ? pointsFor({ ...m, home_score: m.hs, away_score: m.as }, pr.home, pr.away) : null,
       });
     }
   }
@@ -104,25 +139,21 @@ app.get('/api/pool/:token', (req, res) => {
   res.json({
     pool: { name: pool.name, lang: pool.lang || 'fr' },
     me,
-    players: db.prepare('SELECT name FROM players WHERE pool_id = ? ORDER BY name').all(pool.id).map((p) => p.name),
+    players: (await all('SELECT name FROM players WHERE pool_id = ? ORDER BY name', [pool.id])).map((p) => p.name),
     teams: TEAMS,
     sources: SOURCES,
     matches,
     mine,
     others,
     counts,
-    leaderboard: leaderboard(pool.id).map((r) => ({ ...r, isMe: !!me && r.id === me.id })),
-    lastSync: getMeta('last_sync'),
+    leaderboard: (await leaderboard(pool.id)).map((r) => ({ ...r, isMe: !!me && r.id === me.id })),
+    lastSync: await getMeta('last_sync'),
     serverNow: new Date().toISOString(),
   });
+}));
 
-  function finishedPts(m, pr) {
-    return finished(m) ? pointsFor({ ...m, home_score: m.hs, away_score: m.as }, pr.home, pr.away) : null;
-  }
-});
-
-app.post('/api/pool/:token/join', (req, res) => {
-  const pool = getPool.get(req.params.token);
+app.post('/api/pool/:token/join', ah(async (req, res) => {
+  const pool = await get('SELECT * FROM pools WHERE token = ?', [req.params.token]);
   if (!pool) return res.status(404).json({ error: 'Pool introuvable' });
 
   const name = String(req.body.name || '').trim().replace(/\s+/g, ' ');
@@ -130,7 +161,7 @@ app.post('/api/pool/:token/join', (req, res) => {
   if (name.length < 2 || name.length > 20) return res.status(400).json({ error: 'Pseudo entre 2 et 20 caractères' });
   if (pin && !/^\d{3,6}$/.test(pin)) return res.status(400).json({ error: 'PIN : 3 à 6 chiffres' });
 
-  const existing = db.prepare('SELECT * FROM players WHERE pool_id = ? AND name = ?').get(pool.id, name);
+  const existing = await get('SELECT * FROM players WHERE pool_id = ? AND name = ?', [pool.id, name]);
   if (existing) {
     if (existing.pin_hash && existing.pin_hash !== hashPin(pin)) {
       return res.status(403).json({ error: 'pin', message: 'Ce pseudo est protégé par un PIN' });
@@ -139,29 +170,25 @@ app.post('/api/pool/:token/join', (req, res) => {
   }
 
   const key = crypto.randomBytes(12).toString('base64url');
-  db.prepare('INSERT INTO players (pool_id, name, pin_hash, key) VALUES (?, ?, ?, ?)')
-    .run(pool.id, name, pin ? hashPin(pin) : null, key);
+  await run('INSERT INTO players (pool_id, name, pin_hash, key) VALUES (?, ?, ?, ?)',
+    [pool.id, name, pin ? hashPin(pin) : null, key]);
   return res.json({ key, name, rejoined: false });
-});
+}));
 
-app.put('/api/pool/:token/predictions', (req, res) => {
-  const pool = getPool.get(req.params.token);
+app.put('/api/pool/:token/predictions', ah(async (req, res) => {
+  const pool = await get('SELECT * FROM pools WHERE token = ?', [req.params.token]);
   if (!pool) return res.status(404).json({ error: 'Pool introuvable' });
-  const player = getPlayerByKey.get(req.get('x-player-key') || '');
+  const player = await get('SELECT * FROM players WHERE key = ?', [req.get('x-player-key') || '']);
   if (!player || player.pool_id !== pool.id) return res.status(401).json({ error: 'Reconnecte-toi (pseudo)' });
 
   const picks = Array.isArray(req.body.picks) ? req.body.picks.slice(0, 120) : [];
-  const getMatch = db.prepare('SELECT * FROM matches WHERE id = ?');
-  const upsert = db.prepare(`
-    INSERT INTO predictions (player_id, match_id, home, away, updated_at)
-    VALUES (?, ?, ?, ?, datetime('now'))
-    ON CONFLICT(player_id, match_id) DO UPDATE SET home = excluded.home, away = excluded.away, updated_at = excluded.updated_at
-  `);
+  const matchById = new Map((await all('SELECT * FROM matches')).map((m) => [m.id, m]));
 
   let saved = 0;
   const rejected = [];
+  const stmts = [];
   for (const pick of picks) {
-    const m = getMatch.get(Number(pick.m));
+    const m = matchById.get(Number(pick.m));
     const h = Number(pick.h);
     const a = Number(pick.a);
     let reason = null;
@@ -171,49 +198,55 @@ app.put('/api/pool/:token/predictions', (req, res) => {
     else if (!Number.isInteger(h) || !Number.isInteger(a) || h < 0 || a < 0 || h > 30 || a > 30) reason = 'score invalide';
     else if (m.stage !== 'group' && h === a) reason = 'pas de nul en élimination directe';
     if (reason) { rejected.push({ m: pick.m, reason }); continue; }
-    upsert.run(player.id, m.id, h, a);
+    stmts.push({
+      sql: `INSERT INTO predictions (player_id, match_id, home, away, updated_at)
+            VALUES (?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(player_id, match_id) DO UPDATE SET home = excluded.home, away = excluded.away, updated_at = excluded.updated_at`,
+      args: [player.id, m.id, h, a],
+    });
     saved += 1;
   }
+  await batch(stmts);
   res.json({ saved, rejected });
-});
+}));
 
 // ---------- API admin ----------
 function admin(req, res, next) {
   const k = req.get('x-admin-key') || req.query.key;
-  if (k !== config.adminKey) return res.status(403).json({ error: 'Clé admin invalide' });
+  if (k !== adminKey) return res.status(403).json({ error: 'Clé admin invalide' });
   next();
 }
 
-app.get('/api/admin/pools', admin, (_req, res) => {
-  const pools = db.prepare(`
+app.get('/api/admin/pools', admin, ah(async (_req, res) => {
+  const pools = await all(`
     SELECT p.id, p.token, p.name, p.lang, p.created_at, COUNT(pl.id) AS players
     FROM pools p LEFT JOIN players pl ON pl.pool_id = p.id
     GROUP BY p.id ORDER BY p.id
-  `).all();
-  res.json({ pools, lastSync: getMeta('last_sync') });
-});
+  `);
+  res.json({ pools, lastSync: await getMeta('last_sync') });
+}));
 
-app.post('/api/admin/pools', admin, (req, res) => {
+app.post('/api/admin/pools', admin, ah(async (req, res) => {
   const name = String(req.body.name || '').trim();
   if (name.length < 2 || name.length > 40) return res.status(400).json({ error: 'Nom entre 2 et 40 caractères' });
   const lang = req.body.lang === 'en' ? 'en' : 'fr';
   const t = token();
-  db.prepare('INSERT INTO pools (token, name, lang) VALUES (?, ?, ?)').run(t, name, lang);
+  await run('INSERT INTO pools (token, name, lang) VALUES (?, ?, ?)', [t, name, lang]);
   res.json({ token: t, name, lang });
-});
+}));
 
-app.patch('/api/admin/pools/:id', admin, (req, res) => {
+app.patch('/api/admin/pools/:id', admin, ah(async (req, res) => {
   const lang = req.body.lang === 'en' ? 'en' : 'fr';
-  db.prepare('UPDATE pools SET lang = ? WHERE id = ?').run(lang, Number(req.params.id));
+  await run('UPDATE pools SET lang = ? WHERE id = ?', [lang, Number(req.params.id)]);
   res.json({ ok: true, lang });
-});
+}));
 
-app.delete('/api/admin/pools/:id', admin, (req, res) => {
-  db.prepare('DELETE FROM pools WHERE id = ?').run(Number(req.params.id));
+app.delete('/api/admin/pools/:id', admin, ah(async (req, res) => {
+  await run('DELETE FROM pools WHERE id = ?', [Number(req.params.id)]);
   res.json({ ok: true });
-});
+}));
 
-app.post('/api/admin/sync', admin, async (_req, res) => {
+app.post('/api/admin/sync', admin, ah(async (_req, res) => {
   try {
     const r = await sync();
     await pollLive().catch(() => {});
@@ -221,27 +254,42 @@ app.post('/api/admin/sync', admin, async (_req, res) => {
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
-});
+}));
 
-// ---------- démarrage ----------
-(async () => {
-  try {
-    const r = await sync();
-    console.log(`[sync] ${r.ok ? `${r.matches} matchs (source: ${r.source})` : `échec: ${r.error}`}`);
-  } catch (err) {
-    console.error('[sync] échec initial:', err.message);
-  }
-  setInterval(() => sync().catch((e) => console.warn('[sync]', e.message)), SYNC_EVERY_MS);
-  pollLive().then((r) => { if (r.polled) console.log(`[live] ${r.events} événement(s) ESPN suivis`); }).catch((e) => console.warn('[live]', e.message));
-  setInterval(() => pollLive().catch((e) => console.warn('[live]', e.message)), 60 * 1000);
+// ---------- cron Vercel (filet de sécurité quotidien) ----------
+app.get('/api/cron', ah(async (req, res) => {
+  const auth = req.get('authorization') || '';
+  const ok = (process.env.CRON_SECRET && auth === `Bearer ${process.env.CRON_SECRET}`) || req.query.key === adminKey;
+  if (!ok) return res.status(403).json({ error: 'forbidden' });
+  const s = await sync().catch((e) => ({ ok: false, error: e.message }));
+  const l = await pollLive().catch((e) => ({ polled: false, error: e.message }));
+  res.json({ sync: s, live: l });
+}));
 
-  app.listen(PORT, () => {
-    const base = `http://localhost:${PORT}`;
-    const pools = db.prepare('SELECT name, token FROM pools ORDER BY id').all();
-    console.log('');
-    console.log(`⚽ Pronos Mondial 2026 — ${base}`);
-    console.log(`   Admin : ${base}/?key=${config.adminKey}`);
-    for (const p of pools) console.log(`   ${p.name.padEnd(12)} → ${base}/p/${p.token}`);
-    console.log('');
-  });
-})();
+// ---------- démarrage (mode serveur long : local, Railway, Docker…) ----------
+if (require.main === module && !ON_VERCEL) {
+  (async () => {
+    await ready;
+    try {
+      const r = await sync();
+      console.log(`[sync] ${r.ok ? `${r.matches} matchs (source: ${r.source})` : `échec: ${r.error}`}`);
+    } catch (err) {
+      console.error('[sync] échec initial:', err.message);
+    }
+    await pollLive().then((r) => { if (r.polled) console.log(`[live] ${r.events} événement(s) ESPN suivis`); }).catch(() => {});
+    setInterval(() => sync().catch((e) => console.warn('[sync]', e.message)), SYNC_EVERY_MS);
+    setInterval(() => pollLive().catch((e) => console.warn('[live]', e.message)), 60 * 1000);
+
+    const pools = await all('SELECT name, token FROM pools ORDER BY id');
+    app.listen(PORT, () => {
+      const base = `http://localhost:${PORT}`;
+      console.log('');
+      console.log(`⚽ Pronos Mondial 2026 — ${base}`);
+      console.log(`   Admin : ${base}/?key=${adminKey}`);
+      for (const p of pools) console.log(`   ${p.name.padEnd(12)} → ${base}/p/${p.token}`);
+      console.log('');
+    });
+  })();
+}
+
+module.exports = app;

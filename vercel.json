@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    { "source": "/", "destination": "/api/index" },
+    { "source": "/p/:token", "destination": "/api/index" },
+    { "source": "/api/:path*", "destination": "/api/index" }
+  ],
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "{public,data}/**",
+      "maxDuration": 30
+    }
+  },
+  "crons": [
+    { "path": "/api/cron", "schedule": "0 3 * * *" }
+  ]
+}
