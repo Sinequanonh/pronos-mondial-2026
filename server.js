@@ -72,12 +72,23 @@ async function seedPools() {
   }
 }
 
-const ready = (async () => {
-  await initDb();
-  ensureConfig();
-  await seedPools();
-})();
-ready.catch((e) => console.error('[init]', e.message));
+// Init ré-essayable : si elle échoue (ex. blip réseau Turso au cold start), on ne
+// garde PAS la promesse rejetée à vie — la prochaine requête relance l'init.
+let _ready = null;
+function ensureReady() {
+  if (!_ready) {
+    _ready = (async () => {
+      await initDb();
+      ensureConfig();
+      await seedPools();
+    })().catch((e) => {
+      _ready = null; // autorise un nouvel essai
+      console.error('[init] échec:', e && (e.cause || e));
+      throw e;
+    });
+  }
+  return _ready;
+}
 
 // ---------- fraîcheur à la demande (pas de tâches de fond en serverless) ----------
 let lastFreshCheck = 0;
@@ -99,7 +110,13 @@ async function maybeRefresh() {
 
 const app = express();
 app.use(express.json({ limit: '256kb' }));
-app.use((req, res, next) => { ready.then(() => next(), (e) => res.status(500).json({ error: 'init: ' + e.message })); });
+// La base ne gate QUE les routes API qui en dépendent. Les pages HTML, les assets
+// statiques et l'auth (sans base) se chargent toujours, même si Turso a un hoquet.
+const AUTH_NO_DB = new Set(['/api/auth/config', '/api/auth/login', '/api/auth/callback', '/api/auth/me', '/api/auth/logout']);
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/') || AUTH_NO_DB.has(req.path)) return next();
+  ensureReady().then(() => next(), () => res.status(503).json({ error: 'Base momentanément indisponible, réessaie dans un instant.' }));
+});
 app.use(express.static(path.join(__dirname, 'public'), {
   index: false,
   setHeaders: (res, p) => { if (p.endsWith('.html')) res.setHeader('Cache-Control', 'no-store'); },
@@ -448,7 +465,7 @@ app.get('/api/cron', ah(async (req, res) => {
 // ---------- démarrage (mode serveur long : local, Railway, Docker…) ----------
 if (require.main === module && !ON_VERCEL) {
   (async () => {
-    await ready;
+    await ensureReady();
     try {
       const r = await sync();
       console.log(`[sync] ${r.ok ? `${r.matches} matchs (source: ${r.source})` : `échec: ${r.error}`}`);
