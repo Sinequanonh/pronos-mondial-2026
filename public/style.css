@@ -402,6 +402,12 @@ table.standings tr.q td { background: color-mix(in srgb, var(--green-soft) 55%, 
 .mini { padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line2); background: none; color: var(--ink); font-size: 12.5px; font-weight: 600; }
 .mini:hover { border-color: var(--blue); color: var(--blue); }
 .mini.danger:hover { border-color: var(--red); color: var(--red); }
+.players-sub { margin: 0 0 6px; padding: 4px 12px 8px; background: var(--surf); border-radius: 12px; }
+.player-row { display: flex; align-items: center; gap: 12px; padding: 5px 2px; font-size: 13px; border-top: 1px solid var(--line); }
+.player-row:first-child { border-top: 0; }
+.player-row span:first-child { min-width: 140px; font-weight: 600; }
+.player-row .mini { margin-left: auto; padding: 3px 10px; }
+
 .inline-form { display: flex; gap: 8px; }
 .inline-form input { flex: 1; padding: 9px 14px; border: 1.5px solid var(--line2); border-radius: 999px; background: var(--bg); }
 .inline-form .btn { width: auto; margin: 0; padding: 9px 18px; font-size: 14px; }

@@ -95,23 +95,41 @@ async function load() {
   const j = await api('GET', '/api/admin/pools');
   show(true);
   $('#last-sync').textContent = fmtSync(j.lastSync);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   $('#pools').innerHTML = j.pools.map((p) => {
     const link = `${location.origin}/p/${p.token}`;
+    const playersSub = (p.players_list || []).map((pl) =>
+      `<div class="player-row">
+        <span>${esc(pl.name)}</span>
+        <span style="color:var(--muted)">${pl.preds} prono${pl.preds > 1 ? 's' : ''}</span>
+        <button class="mini danger" data-del-player="${pl.id}" data-pname="${esc(pl.name)}">✕</button>
+      </div>`).join('') || '<div class="player-row" style="color:var(--muted)">Personne pour l\'instant</div>';
     return `<div class="pool-row">
       <b>${p.name}</b>
-      <span style="color:var(--muted);font-size:12px">${p.players} joueur${p.players > 1 ? 's' : ''}</span>
+      <button class="mini" data-toggle-players="${p.id}">👥 ${p.players}</button>
       <span class="lnk">${link}</span>
       <button class="mini" data-lang-id="${p.id}" data-lang-cur="${p.lang}" title="Langue par défaut du pool (les joueurs peuvent changer)">🌐 ${(p.lang || 'fr').toUpperCase()}</button>
       <button class="mini" data-copy="${link}">📋 Copier</button>
       <a class="mini" style="text-decoration:none" href="/p/${p.token}" target="_blank">Ouvrir</a>
-      <button class="mini danger" data-del="${p.id}" data-name="${p.name}">Supprimer</button>
-    </div>`;
+      <button class="mini danger" data-del="${p.id}" data-name="${esc(p.name)}">Supprimer</button>
+    </div>
+    <div class="players-sub" id="pl-${p.id}" hidden>${playersSub}</div>`;
   }).join('');
 }
 
 document.addEventListener('click', async (e) => {
   const copy = e.target.dataset && e.target.dataset.copy;
   if (copy) { await navigator.clipboard.writeText(copy); toast('Lien copié ✓'); return; }
+  const tg = e.target.dataset && e.target.dataset.togglePlayers;
+  if (tg) { const el = document.getElementById('pl-' + tg); el.hidden = !el.hidden; return; }
+  const delPlayer = e.target.dataset && e.target.dataset.delPlayer;
+  if (delPlayer) {
+    if (!confirm(`Retirer « ${e.target.dataset.pname} » et tous ses pronos ?`)) return;
+    await api('DELETE', '/api/admin/players/' + delPlayer);
+    toast(`${e.target.dataset.pname} retiré ✓`);
+    load();
+    return;
+  }
   const langId = e.target.dataset && e.target.dataset.langId;
   if (langId) {
     const next = e.target.dataset.langCur === 'fr' ? 'en' : 'fr';

@@ -223,7 +223,40 @@ app.get('/api/admin/pools', admin, ah(async (_req, res) => {
     FROM pools p LEFT JOIN players pl ON pl.pool_id = p.id
     GROUP BY p.id ORDER BY p.id
   `);
+  const players = await all(`
+    SELECT pl.id, pl.name, pl.pool_id, pl.created_at, COUNT(pr.match_id) AS preds
+    FROM players pl LEFT JOIN predictions pr ON pr.player_id = pl.id
+    GROUP BY pl.id ORDER BY pl.name
+  `);
+  for (const p of pools) {
+    p.players_list = players.filter((x) => x.pool_id === p.id)
+      .map(({ id, name, preds }) => ({ id, name, preds }));
+  }
   res.json({ pools, lastSync: await getMeta('last_sync') });
+}));
+
+app.delete('/api/admin/players/:id', admin, ah(async (req, res) => {
+  const id = Number(req.params.id);
+  const player = await get('SELECT * FROM players WHERE id = ?', [id]);
+  if (!player) return res.status(404).json({ error: 'Joueur introuvable' });
+  // cascade explicite : l'application ne dépend pas du pragma foreign_keys (non garanti sur Turso)
+  await batch([
+    { sql: 'DELETE FROM predictions WHERE player_id = ?', args: [id] },
+    { sql: 'DELETE FROM players WHERE id = ?', args: [id] },
+  ]);
+  res.json({ ok: true, name: player.name });
+}));
+
+app.post('/api/admin/cleanup', admin, ah(async (_req, res) => {
+  // purge d'éventuels orphelins laissés par d'anciennes suppressions (avant cascade explicite)
+  const a = await run('DELETE FROM predictions WHERE player_id NOT IN (SELECT id FROM players)');
+  const b = await run('DELETE FROM players WHERE pool_id NOT IN (SELECT id FROM pools)');
+  const c = await run('DELETE FROM predictions WHERE player_id NOT IN (SELECT id FROM players)');
+  res.json({
+    ok: true,
+    orphanPlayers: b.rowsAffected || 0,
+    orphanPredictions: (a.rowsAffected || 0) + (c.rowsAffected || 0),
+  });
 }));
 
 app.post('/api/admin/pools', admin, ah(async (req, res) => {
@@ -242,7 +275,12 @@ app.patch('/api/admin/pools/:id', admin, ah(async (req, res) => {
 }));
 
 app.delete('/api/admin/pools/:id', admin, ah(async (req, res) => {
-  await run('DELETE FROM pools WHERE id = ?', [Number(req.params.id)]);
+  const id = Number(req.params.id);
+  await batch([
+    { sql: 'DELETE FROM predictions WHERE player_id IN (SELECT id FROM players WHERE pool_id = ?)', args: [id] },
+    { sql: 'DELETE FROM players WHERE pool_id = ?', args: [id] },
+    { sql: 'DELETE FROM pools WHERE id = ?', args: [id] },
+  ]);
   res.json({ ok: true });
 }));
 
