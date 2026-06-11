@@ -100,9 +100,11 @@ async function load() {
     const link = `${location.origin}/p/${p.token}`;
     const playersSub = (p.players_list || []).map((pl) =>
       `<div class="player-row">
-        <span>${esc(pl.name)}</span>
+        <span>${esc(pl.name)} ${pl.pin ? '<span title="PIN défini">🔒</span>' : ''}</span>
         <span style="color:var(--muted)">${pl.preds} prono${pl.preds > 1 ? 's' : ''}</span>
-        <button class="mini danger" data-del-player="${pl.id}" data-pname="${esc(pl.name)}">✕</button>
+        <button class="mini" data-rename-player="${pl.id}" data-pname="${esc(pl.name)}" title="Renommer">✏️</button>
+        <button class="mini" data-pin-player="${pl.id}" data-pname="${esc(pl.name)}" data-haspin="${pl.pin ? 1 : 0}" title="Définir ou retirer le PIN">PIN</button>
+        <button class="mini danger" data-del-player="${pl.id}" data-pname="${esc(pl.name)}" title="Retirer du pool">✕</button>
       </div>`).join('') || '<div class="player-row" style="color:var(--muted)">Personne pour l\'instant</div>';
     return `<div class="pool-row">
       <b>${p.name}</b>
@@ -127,6 +129,26 @@ document.addEventListener('click', async (e) => {
     if (!confirm(`Retirer « ${e.target.dataset.pname} » et tous ses pronos ?`)) return;
     await api('DELETE', '/api/admin/players/' + delPlayer);
     toast(`${e.target.dataset.pname} retiré ✓`);
+    load();
+    return;
+  }
+  const renPlayer = e.target.dataset && e.target.dataset.renamePlayer;
+  if (renPlayer) {
+    const cur = e.target.dataset.pname;
+    const v = prompt(`Nouveau pseudo pour « ${cur} » :`, cur);
+    if (v === null || v.trim() === '' || v.trim() === cur) return;
+    const j = await api('PATCH', '/api/admin/players/' + renPlayer, { name: v.trim() });
+    j.error ? toast('⚠️ ' + j.error, true) : toast(`Renommé en « ${j.name} » ✓`);
+    load();
+    return;
+  }
+  const pinPlayer = e.target.dataset && e.target.dataset.pinPlayer;
+  if (pinPlayer) {
+    const has = e.target.dataset.haspin === '1';
+    const v = prompt(`PIN pour « ${e.target.dataset.pname} » — 3 à 6 chiffres${has ? ' (vide pour retirer le PIN actuel)' : ''} :`, '');
+    if (v === null) return;
+    const j = await api('PATCH', '/api/admin/players/' + pinPlayer, { pin: v.trim() });
+    j.error ? toast('⚠️ ' + j.error, true) : toast(j.pin ? 'PIN défini ✓ (à transmettre au joueur)' : 'PIN retiré ✓');
     load();
     return;
   }

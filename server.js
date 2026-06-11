@@ -224,15 +224,40 @@ app.get('/api/admin/pools', admin, ah(async (_req, res) => {
     GROUP BY p.id ORDER BY p.id
   `);
   const players = await all(`
-    SELECT pl.id, pl.name, pl.pool_id, pl.created_at, COUNT(pr.match_id) AS preds
+    SELECT pl.id, pl.name, pl.pool_id, pl.pin_hash, pl.created_at, COUNT(pr.match_id) AS preds
     FROM players pl LEFT JOIN predictions pr ON pr.player_id = pl.id
     GROUP BY pl.id ORDER BY pl.name
   `);
   for (const p of pools) {
     p.players_list = players.filter((x) => x.pool_id === p.id)
-      .map(({ id, name, preds }) => ({ id, name, preds }));
+      .map(({ id, name, preds, pin_hash }) => ({ id, name, preds, pin: !!pin_hash }));
   }
   res.json({ pools, lastSync: await getMeta('last_sync') });
+}));
+
+app.patch('/api/admin/players/:id', admin, ah(async (req, res) => {
+  const id = Number(req.params.id);
+  const player = await get('SELECT * FROM players WHERE id = ?', [id]);
+  if (!player) return res.status(404).json({ error: 'Joueur introuvable' });
+
+  let name = player.name;
+  if (req.body.name !== undefined) {
+    name = String(req.body.name || '').trim().replace(/\s+/g, ' ');
+    if (name.length < 2 || name.length > 20) return res.status(400).json({ error: 'Pseudo entre 2 et 20 caractères' });
+    const clash = await get('SELECT id FROM players WHERE pool_id = ? AND name = ? AND id != ?', [player.pool_id, name, id]);
+    if (clash) return res.status(409).json({ error: 'Pseudo déjà pris dans ce pool' });
+  }
+
+  let pinHash = player.pin_hash;
+  if (req.body.pin !== undefined) {
+    const pin = String(req.body.pin || '').trim();
+    if (pin === '') pinHash = null;
+    else if (/^\d{3,6}$/.test(pin)) pinHash = hashPin(pin);
+    else return res.status(400).json({ error: 'PIN : 3 à 6 chiffres (ou vide pour le retirer)' });
+  }
+
+  await run('UPDATE players SET name = ?, pin_hash = ? WHERE id = ?', [name, pinHash, id]);
+  res.json({ ok: true, name, pin: !!pinHash });
 }));
 
 app.delete('/api/admin/players/:id', admin, ah(async (req, res) => {
