@@ -17,7 +17,10 @@ const hashPin = (pin) => crypto.createHash('sha256').update(String(pin)).digest(
 // ---------- SSO Google : seul cet email a accès à l'admin ----------
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'leobaeckerpro@gmail.com').toLowerCase();
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || null;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || null;
+const SSO_ENABLED = !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
 const SESSION_DAYS = 30;
+const baseUrl = (req) => `${req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http')}://${req.get('host')}`;
 
 const parseCookies = (req) =>
   Object.fromEntries((req.headers.cookie || '').split(';')
@@ -236,8 +239,18 @@ app.put('/api/pool/:token/predictions', ah(async (req, res) => {
   res.json({ saved, rejected });
 }));
 
-// ---------- authentification admin ----------
-app.get('/api/auth/config', (_req, res) => res.json({ clientId: GOOGLE_CLIENT_ID }));
+// ---------- authentification admin (OAuth Google par redirection) ----------
+const cookie = (name, val, maxAge) =>
+  `${name}=${val}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Lax${ON_VERCEL ? '; Secure' : ''}`;
+
+function loginErrorPage(msg) {
+  return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <body style="font:15px -apple-system,system-ui,sans-serif;max-width:420px;margin:80px auto;padding:0 20px;text-align:center;color:#202124">
+    <h2>⚽ Connexion refusée</h2><p style="color:#5f6368">${msg}</p>
+    <p><a href="/" style="color:#1a73e8">← Réessayer</a></p></body>`;
+}
+
+app.get('/api/auth/config', (_req, res) => res.json({ ssoEnabled: SSO_ENABLED }));
 
 app.get('/api/auth/me', (req, res) => {
   const s = readSession(req);
@@ -246,25 +259,61 @@ app.get('/api/auth/me', (req, res) => {
 });
 
 app.post('/api/auth/logout', (_req, res) => {
-  res.setHeader('Set-Cookie', 'admin_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax');
+  res.setHeader('Set-Cookie', cookie('admin_session', '', 0));
   res.json({ ok: true });
 });
 
-app.post('/api/auth/google', ah(async (req, res) => {
-  if (!GOOGLE_CLIENT_ID) return res.status(400).json({ error: 'SSO non configuré' });
-  const credential = String(req.body.credential || '');
-  if (!credential || credential.length > 4096) return res.status(400).json({ error: 'credential manquant' });
-  const r = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(credential),
-    { signal: AbortSignal.timeout(10000) });
-  if (!r.ok) return res.status(401).json({ error: 'Jeton Google invalide' });
-  const t = await r.json();
-  if (t.aud !== GOOGLE_CLIENT_ID) return res.status(401).json({ error: 'Mauvais client OAuth' });
-  if (String(t.email || '').toLowerCase() !== ADMIN_EMAIL || t.email_verified !== 'true') {
-    return res.status(403).json({ error: 'Cet email n\'est pas autorisé' });
+// 1) départ : redirige vers Google (même onglet, pas de popup)
+app.get('/api/auth/login', (req, res) => {
+  if (!SSO_ENABLED) return res.status(400).send(loginErrorPage('SSO non configuré.'));
+  const state = crypto.randomBytes(16).toString('base64url');
+  res.setHeader('Set-Cookie', cookie('oauth_state', state, 600));
+  const p = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: baseUrl(req) + '/api/auth/callback',
+    response_type: 'code',
+    scope: 'openid email profile',
+    state,
+    prompt: 'select_account',
+    access_type: 'online',
+  });
+  res.redirect('https://accounts.google.com/o/oauth2/v2/auth?' + p.toString());
+});
+
+// 2) retour : échange le code, vérifie l'email, pose la session
+app.get('/api/auth/callback', ah(async (req, res) => {
+  res.setHeader('Set-Cookie', cookie('oauth_state', '', 0));
+  if (!SSO_ENABLED) return res.status(400).send(loginErrorPage('SSO non configuré.'));
+  const { code, state } = req.query;
+  const saved = parseCookies(req).oauth_state;
+  if (!code || !state || !saved || String(state) !== saved) {
+    return res.status(400).send(loginErrorPage('Lien de connexion expiré. Relance la connexion.'));
   }
-  res.setHeader('Set-Cookie',
-    `admin_session=${makeSession(ADMIN_EMAIL)}; Max-Age=${SESSION_DAYS * 86400}; Path=/; HttpOnly; SameSite=Lax${ON_VERCEL ? '; Secure' : ''}`);
-  res.json({ ok: true, email: ADMIN_EMAIL });
+  const tok = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code: String(code),
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      redirect_uri: baseUrl(req) + '/api/auth/callback',
+      grant_type: 'authorization_code',
+    }),
+    signal: AbortSignal.timeout(10000),
+  }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  if (!tok || !tok.id_token) return res.status(401).send(loginErrorPage('Échec de l\'authentification Google.'));
+
+  const info = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(tok.id_token),
+    { signal: AbortSignal.timeout(10000) }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  if (!info || info.aud !== GOOGLE_CLIENT_ID) return res.status(401).send(loginErrorPage('Jeton Google invalide.'));
+  if (String(info.email || '').toLowerCase() !== ADMIN_EMAIL || info.email_verified !== 'true') {
+    return res.status(403).send(loginErrorPage(`Le compte ${info.email || ''} n'est pas autorisé.`));
+  }
+  res.setHeader('Set-Cookie', [
+    cookie('oauth_state', '', 0),
+    cookie('admin_session', makeSession(ADMIN_EMAIL), SESSION_DAYS * 86400),
+  ]);
+  res.redirect('/');
 }));
 
 // ---------- API admin ----------

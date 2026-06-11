@@ -14,7 +14,9 @@
     <div class="admin-card" id="login" hidden>
       <h2>Connexion</h2>
       <p style="color:var(--muted);font-size:13px;margin-top:-6px">Accès réservé à l'administrateur du jeu.</p>
-      <div id="gsi" style="margin:12px 0 4px"></div>
+      <a id="gbtn" class="btn" href="/api/auth/login" style="display:none;width:auto;text-decoration:none;margin:12px 0 4px;justify-content:center">
+        <span style="display:inline-flex;align-items:center;gap:10px"><span style="background:#fff;border-radius:3px;padding:2px 5px;font-weight:800;color:#4285f4">G</span> Se connecter avec Google</span>
+      </a>
       <div id="legacy" hidden>
         <form class="inline-form" id="login-form">
           <input id="key-input" placeholder="Clé API locale (affichée au démarrage du serveur)" autocomplete="off">
@@ -187,20 +189,6 @@ $('#logout-btn').addEventListener('click', async () => {
   location.reload();
 });
 
-async function onGoogle(resp) {
-  try {
-    const r = await fetch('/api/auth/google', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ credential: resp.credential }),
-    });
-    const j = await r.json();
-    if (!r.ok) { $('#login-err').textContent = j.error || 'Connexion refusée.'; return; }
-    location.reload();
-  } catch {
-    $('#login-err').textContent = 'Impossible de joindre le serveur.';
-  }
-}
 
 $('#create-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -234,15 +222,9 @@ $('#sync-btn').addEventListener('click', async () => {
     try { await load(); $('#who').textContent = 'clé API locale'; return; } catch { /* continue */ }
   }
   show(false);
-  const cfg = await fetch('/api/auth/config').then((r) => r.json()).catch(() => ({ clientId: null }));
-  if (cfg.clientId) {
-    const s = document.createElement('script');
-    s.src = 'https://accounts.google.com/gsi/client';
-    s.onload = () => {
-      google.accounts.id.initialize({ client_id: cfg.clientId, callback: onGoogle });
-      google.accounts.id.renderButton($('#gsi'), { theme: 'outline', size: 'large', text: 'signin_with', width: 280 });
-    };
-    document.head.appendChild(s);
+  const cfg = await fetch('/api/auth/config').then((r) => r.json()).catch(() => ({ ssoEnabled: false }));
+  if (cfg.ssoEnabled) {
+    $('#gbtn').style.display = 'inline-flex'; // redirection OAuth, pas de popup
   } else {
     $('#legacy').hidden = false; // dev local sans SSO configuré
   }
