@@ -1,0 +1,6 @@
+node_modules
+data/pronos.db*
+data/config.json
+data/feed-cache.json
+.git
+.DS_Store

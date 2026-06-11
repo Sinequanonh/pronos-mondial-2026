@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Pronos Mondial 2026</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚽</text></svg>">
+  <link rel="stylesheet" href="/style.css">
+  <script>
+    // applique le thème avant le premier paint (évite le flash)
+    (function () {
+      var t = localStorage.getItem('pronos26:theme');
+      if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.dataset.theme = t;
+    })();
+  </script>
+</head>
+<body>
+  <header class="top">
+    <div class="top-in">
+      <div class="brandblk">
+        <div class="brand">⚽ <span id="t-brand">Mondial 2026</span> <small id="h-pool"></small></div>
+        <div class="brandsub" id="h-sub"></div>
+      </div>
+      <div class="next" id="h-next"></div>
+      <button class="iconbtn" id="btn-lang" title="Français / English"></button>
+      <button class="iconbtn" id="btn-theme"></button>
+      <div id="h-user"></div>
+    </div>
+    <nav class="tabs" id="tabs"></nav>
+  </header>
+
+  <div class="wrap">
+    <div class="banner hidden" id="qp-banner">
+      <span id="qp-banner-txt"></span>
+      <button class="btn slim" id="qp-go"></button>
+    </div>
+
+    <div class="views" id="views">
+      <section class="card" id="sec-matchs">
+        <div class="card-h">
+          <h2 id="t-matchs-h2"></h2>
+          <span class="sub" id="t-matchs-sub"></span>
+        </div>
+        <div class="daylist" id="daylist"></div>
+      </section>
+
+      <section class="card" id="sec-bracket">
+        <div class="card-h">
+          <h2 id="t-bracket-h2"></h2>
+          <span class="sub" id="t-bracket-sub"></span>
+        </div>
+        <div class="bkt-scroll"><div class="bkt" id="bracket"></div></div>
+      </section>
+
+      <aside class="side" id="sec-side">
+        <section class="card">
+          <div class="card-h"><h2 id="t-board-h2"></h2><span class="sub" id="board-sub"></span></div>
+          <div class="board" id="board"></div>
+        </section>
+        <section class="card">
+          <div class="rules" id="rules"></div>
+        </section>
+      </aside>
+
+      <section class="card" id="sec-groups">
+        <div class="card-h">
+          <h2 id="t-groups-h2"></h2>
+          <span class="sub" id="t-groups-sub"></span>
+        </div>
+        <div class="groups" id="groups"></div>
+      </section>
+    </div>
+    <footer class="foot" id="foot"></footer>
+  </div>
+
+  <div class="overlay hidden" id="join">
+    <form class="modal" id="join-form">
+      <h2 id="join-title"></h2>
+      <p id="t-join-p"></p>
+      <label for="j-name" id="t-join-name"></label>
+      <input id="j-name" maxlength="20" autocomplete="nickname" required>
+      <label for="j-pin" id="t-join-pin"></label>
+      <input id="j-pin" inputmode="numeric" maxlength="6" placeholder="••••" autocomplete="off">
+      <div class="err" id="j-err"></div>
+      <button class="btn" type="submit" id="t-join-go"></button>
+      <button class="btn ghost" type="button" id="j-view"></button>
+    </form>
+  </div>
+
+  <div class="overlay hidden" id="qp">
+    <div class="modal qp-modal">
+      <h2 id="qp-title"></h2>
+      <p id="qp-sub"></p>
+      <div class="qp-list" id="qp-list"></div>
+      <button class="btn" id="qp-close"></button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="/pool.js"></script>
+</body>
+</html>

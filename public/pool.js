@@ -1,0 +1,865 @@
+/* Pronos Mondial 2026 — vue d'un pool, design façon fiche Google (FR/EN, sombre, live, vues par onglets) */
+const TOKEN = decodeURIComponent(location.pathname.split('/').pop());
+const LSKEY = 'pronos26:' + TOKEN;
+const QPKEY = 'pronos26:qp:' + TOKEN;
+const VIEWS = ['apercu', 'matchs', 'arbre', 'groupes', 'classement'];
+
+const S = {
+  key: localStorage.getItem(LSKEY) || '',
+  data: null,
+  dirty: new Map(),   // matchId -> [h, a] en attente d'envoi
+  viewOnly: false,
+  saveTimer: null,
+  showPast: false,
+  bktCentered: false,
+  view: (() => {
+    const v = localStorage.getItem('pronos26:view');
+    if (VIEWS.includes(v)) return v;
+    return window.innerWidth <= 900 ? 'matchs' : 'apercu';
+  })(),
+};
+document.body.dataset.view = S.view;
+
+const $ = (sel) => document.querySelector(sel);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const cap1 = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+// ---------- i18n ----------
+const I18N = {
+  fr: {
+    brand: 'Mondial 2026',
+    docTitle: (p) => `${p} · Pronos Mondial 2026`,
+    tab_apercu: 'Aperçu', tab_matchs: 'Matchs', tab_arbre: 'Arbre', tab_groupes: 'Groupes', tab_classement: 'Classement',
+    matchsH2: '🗓️ Tous les matchs',
+    matchsSub: 'heures locales · tape tes pronos directement dans la liste',
+    bracketH2: '🏆 Tableau final',
+    bracketSub: "du 28 juin au 19 juillet — les pronos s'ouvrent quand les équipes sont connues",
+    boardH2: '🏅 Classement',
+    groupsH2: '📋 Phase de groupes',
+    groupsSub: 'classements en direct · pronos dans chaque match',
+    players: (n) => `${n} joueur${n > 1 ? 's' : ''}`,
+    group: (g) => `Groupe ${g}`,
+    stH: ['#', 'Équipe', 'J', 'G', 'N', 'P', 'Diff', 'Pts'],
+    caps: { r32: '16ᵉˢ de finale', r16: '8ᵉˢ', qf: 'Quarts', sf: 'Demi' },
+    stageShort: { r32: '16ᵉˢ de finale', r16: '8ᵉˢ de finale', qf: 'Quart', sf: 'Demi-finale', third: 'Petite finale', final: 'Finale' },
+    stageSubKo: { r32: '16ᵉˢ de finale', r16: '8ᵉˢ de finale', qf: 'Quarts de finale', sf: 'Demi-finales', third: 'Petite finale', final: 'Finale' },
+    mdGroup: (n) => `Phase de groupes · Journée ${n} sur 3`,
+    finalCap: 'Finale · 19 juillet',
+    thirdCap: 'Petite finale · 18 juillet',
+    champ: '🏆 Champion', champWorld: 'Champion du monde', champYours: 'Ton champion', champTbd: 'à toi de le prédire…',
+    ph1: (g) => `1ᵉʳ gr. ${g}`, ph2: (g) => `2ᵉ gr. ${g}`, ph3: (l) => `3ᵉ ${l}`,
+    phW: (n) => `Vainq. m${n}`, phL: (n) => `Perd. m${n}`,
+    nextMatch: (vs, rel) => `Prochain match : <b>${vs}</b> ${rel}`,
+    over: 'Compétition terminée 🏆',
+    liveNow: (s) => `🔴 ${s}`,
+    today: "Aujourd'hui", tomorrow: 'Demain',
+    finished: 'Terminé', liveWord: 'Live',
+    showPast: (n) => `Afficher les ${n} jours passés`, hidePast: 'Masquer les jours passés',
+    imminent: 'imminent',
+    inMin: (m) => `dans ${m} min`,
+    atTime: (t2, h, mm) => `à ${t2} (dans ${h} h ${mm})`,
+    onDay: (d, t2) => `${d} à ${t2}`,
+    join: 'Participer ⚽', switch: 'changer',
+    pts: (n) => `${n} pt${n > 1 ? 's' : ''}`,
+    exactSub: (e, o) => `${e} exact${e > 1 ? 's' : ''} · ${o} bon${o > 1 ? 's' : ''} résultat${o > 1 ? 's' : ''}`,
+    boardEmpty: "Personne pour l'instant — partage le lien et que le meilleur gagne 🎉",
+    rules: 'Comment ça marche',
+    rule3: '<b>3 pts</b> — score exact',
+    rule1: '<b>1 pt</b> — bon résultat (vainqueur ou nul)',
+    rule0: '<b>0 pt</b> — raté 😬',
+    ruleKo: "En élimination directe, le « bon résultat », c'est l'équipe qui se qualifie. Les pronos se verrouillent au coup d'envoi 🔒",
+    myCount: (m, o) => `Tu as pronostiqué <b>${m}</b> match${m > 1 ? 's' : ''} · <b>${o}</b> encore ouvert${o > 1 ? 's' : ''}.`,
+    syncInfo: (ago) => `Scores en direct pendant les matchs · dernière synchro ${ago}`,
+    agoNow: "à l'instant", agoMin: (m) => `il y a ${m} min`, agoH: (h, m) => `il y a ${h} h${m}`,
+    foot: 'Heures affichées dans ton fuseau · Données fixturedownload.com · Live ESPN · Drapeaux flagcdn.com',
+    joinTitle: (p) => `Rejoindre « ${p} »`,
+    joinP: "Choisis un pseudo, c'est tout. Le PIN est optionnel — il empêche juste les petits malins de pronostiquer à ta place.",
+    joinName: 'Ton pseudo', joinNamePh: 'ex. Tonton Michel',
+    joinPin: 'PIN (optionnel, 3 à 6 chiffres)',
+    joinGo: "C'est parti ⚽", joinView: 'Je veux juste regarder',
+    joinPinErr: 'Ce pseudo est protégé par un PIN — entre le bon code.',
+    joinSrvErr: 'Impossible de joindre le serveur.',
+    welcome: (n) => `Bienvenue ${n} 🎉 Fais tes pronos !`,
+    welcomeBack: (n) => `Re-bonjour ${n} 👋`,
+    saved: (n) => `✓ ${n} prono${n > 1 ? 's' : ''} enregistré${n > 1 ? 's' : ''}`,
+    sessionLost: 'Session perdue — re-choisis ton pseudo',
+    offline: 'Hors ligne ? Réessaie dans un instant',
+    noDraw: 'Pas de match nul en élimination directe 😉',
+    confirmSwitch: 'Changer de pseudo ? (les pronos déjà faits restent liés à l\'ancien pseudo)',
+    seeAll: 'Voir les pronos de tout le monde',
+    invalidLink: 'Lien invalide 😕',
+    invalidLinkP: "Ce pool n'existe pas (ou plus). Vérifie le lien qu'on t'a partagé.",
+    qpTitle: '⚡ Pronos express',
+    qpSub: 'Les matchs des prochaines 24 h — tape un score, c\'est sauvegardé direct.',
+    qpEmpty: 'Tout est pronostiqué pour les prochaines 24 h 🎉',
+    qpClose: 'Fermer',
+    qpBanner: (n) => `⚡ ${n} match${n > 1 ? 's' : ''} dans les prochaines 24 h sans prono`,
+    qpGo: 'Pronostiquer',
+    mine: 'toi',
+    reasons: {
+      'match inconnu': 'match inconnu',
+      'match commencé': 'match commencé',
+      'équipes pas encore connues': 'équipes pas encore connues',
+      'score invalide': 'score invalide',
+      'pas de nul en élimination directe': 'pas de nul en élimination directe',
+      'Pseudo entre 2 et 20 caractères': 'Pseudo entre 2 et 20 caractères',
+      'PIN : 3 à 6 chiffres': 'PIN : 3 à 6 chiffres',
+    },
+  },
+  en: {
+    brand: 'World Cup 2026',
+    docTitle: (p) => `${p} · World Cup 2026 predictions`,
+    tab_apercu: 'Overview', tab_matchs: 'Matches', tab_arbre: 'Bracket', tab_groupes: 'Groups', tab_classement: 'Standings',
+    matchsH2: '🗓️ All matches',
+    matchsSub: 'local times · type your picks right in the list',
+    bracketH2: '🏆 Knockout bracket',
+    bracketSub: 'June 28 – July 19 — picks open once the teams are known',
+    boardH2: '🏅 Leaderboard',
+    groupsH2: '📋 Group stage',
+    groupsSub: 'live tables · picks inside every match',
+    players: (n) => `${n} player${n > 1 ? 's' : ''}`,
+    group: (g) => `Group ${g}`,
+    stH: ['#', 'Team', 'MP', 'W', 'D', 'L', 'GD', 'Pts'],
+    caps: { r32: 'Round of 32', r16: 'Round of 16', qf: 'Quarter-finals', sf: 'Semi' },
+    stageShort: { r32: 'Round of 32', r16: 'Round of 16', qf: 'Quarter-final', sf: 'Semi-final', third: 'Third place', final: 'Final' },
+    stageSubKo: { r32: 'Round of 32', r16: 'Round of 16', qf: 'Quarter-finals', sf: 'Semi-finals', third: 'Third place play-off', final: 'Final' },
+    mdGroup: (n) => `Group stage · Matchday ${n} of 3`,
+    finalCap: 'Final · July 19',
+    thirdCap: 'Third place · July 18',
+    champ: '🏆 Champion', champWorld: 'World champions', champYours: 'Your pick', champTbd: 'make your pick…',
+    ph1: (g) => `1st gr. ${g}`, ph2: (g) => `2nd gr. ${g}`, ph3: (l) => `3rd ${l}`,
+    phW: (n) => `W m${n}`, phL: (n) => `L m${n}`,
+    nextMatch: (vs, rel) => `Next match: <b>${vs}</b> ${rel}`,
+    over: 'Tournament over 🏆',
+    liveNow: (s) => `🔴 ${s}`,
+    today: 'Today', tomorrow: 'Tomorrow',
+    finished: 'FT', liveWord: 'Live',
+    showPast: (n) => `Show ${n} past day${n > 1 ? 's' : ''}`, hidePast: 'Hide past days',
+    imminent: 'kicking off',
+    inMin: (m) => `in ${m} min`,
+    atTime: (t2, h, mm) => `at ${t2} (in ${h}h${mm})`,
+    onDay: (d, t2) => `${d} at ${t2}`,
+    join: 'Join in ⚽', switch: 'switch',
+    pts: (n) => `${n} pt${n > 1 ? 's' : ''}`,
+    exactSub: (e, o) => `${e} exact · ${o} correct result${o > 1 ? 's' : ''}`,
+    boardEmpty: 'Nobody yet — share the link and may the best win 🎉',
+    rules: 'How it works',
+    rule3: '<b>3 pts</b> — exact score',
+    rule1: '<b>1 pt</b> — correct result (winner or draw)',
+    rule0: '<b>0 pts</b> — missed 😬',
+    ruleKo: 'In the knockout rounds, a “correct result” means picking the team that goes through. Picks lock at kickoff 🔒',
+    myCount: (m, o) => `You've predicted <b>${m}</b> match${m > 1 ? 'es' : ''} · <b>${o}</b> still open.`,
+    syncInfo: (ago) => `Live scores during matches · last sync ${ago}`,
+    agoNow: 'just now', agoMin: (m) => `${m} min ago`, agoH: (h, m) => `${h}h${m} ago`,
+    foot: 'Times shown in your timezone · Data fixturedownload.com · Live ESPN · Flags flagcdn.com',
+    joinTitle: (p) => `Join “${p}”`,
+    joinP: 'Pick a nickname, that\'s it. The PIN is optional — it just stops pranksters from predicting in your name.',
+    joinName: 'Your nickname', joinNamePh: 'e.g. Uncle Mike',
+    joinPin: 'PIN (optional, 3–6 digits)',
+    joinGo: "Let's go ⚽", joinView: 'Just browsing',
+    joinPinErr: 'This nickname is PIN-protected — enter the right code.',
+    joinSrvErr: 'Could not reach the server.',
+    welcome: (n) => `Welcome ${n} 🎉 Make your picks!`,
+    welcomeBack: (n) => `Welcome back ${n} 👋`,
+    saved: (n) => `✓ ${n} pick${n > 1 ? 's' : ''} saved`,
+    sessionLost: 'Session lost — pick your nickname again',
+    offline: 'Offline? Try again in a moment',
+    noDraw: 'No draws in knockout games 😉',
+    confirmSwitch: 'Switch nickname? (picks already made stay with the old nickname)',
+    seeAll: "See everyone's picks",
+    invalidLink: 'Invalid link 😕',
+    invalidLinkP: 'This pool doesn\'t exist (anymore). Double-check the link you were sent.',
+    qpTitle: '⚡ Quick picks',
+    qpSub: 'Matches in the next 24 hours — type a score, it saves instantly.',
+    qpEmpty: 'Everything in the next 24 hours is predicted 🎉',
+    qpClose: 'Done',
+    qpBanner: (n) => `⚡ ${n} match${n > 1 ? 'es' : ''} in the next 24 h without a pick`,
+    qpGo: 'Make picks',
+    mine: 'you',
+    reasons: {
+      'match inconnu': 'unknown match',
+      'match commencé': 'match already started',
+      'équipes pas encore connues': 'teams not known yet',
+      'score invalide': 'invalid score',
+      'pas de nul en élimination directe': 'no draws in knockout games',
+      'Pseudo entre 2 et 20 caractères': 'Nickname must be 2–20 characters',
+      'PIN : 3 à 6 chiffres': 'PIN: 3–6 digits',
+    },
+  },
+};
+
+const LSLANG = 'pronos26:lang:' + TOKEN; // choix explicite de l'utilisateur, par pool
+let LANG = localStorage.getItem(LSLANG) || localStorage.getItem('pronos26:lang') ||
+  ((navigator.language || 'en').toLowerCase().startsWith('fr') ? 'fr' : 'en');
+// après le premier fetch : si pas de choix explicite, la langue par défaut du pool s'applique
+function resolveLang() {
+  const poolLang = S.data && S.data.pool.lang;
+  if (!localStorage.getItem(LSLANG) && poolLang && poolLang !== LANG) {
+    LANG = poolLang;
+    makeFormatters();
+  }
+}
+const t = (k, ...a) => {
+  const v = (I18N[LANG] && I18N[LANG][k]) ?? I18N.fr[k] ?? k;
+  return typeof v === 'function' ? v(...a) : v;
+};
+const trReason = (r) => (I18N[LANG].reasons || {})[r] || r;
+
+// ---------- thème ----------
+let THEME = document.documentElement.dataset.theme || 'light';
+function applyTheme() {
+  document.documentElement.dataset.theme = THEME;
+  $('#btn-theme').textContent = THEME === 'dark' ? '☀️' : '🌙';
+  $('#btn-theme').title = THEME === 'dark' ? 'Light mode' : 'Dark mode';
+}
+
+// ---------- données ----------
+const SIDE_L = { r32: [74, 77, 73, 75, 83, 84, 81, 82], r16: [89, 90, 93, 94], qf: [97, 98], sf: [101] };
+const SIDE_R = { sf: [102], qf: [99, 100], r16: [91, 92, 95, 96], r32: [76, 78, 79, 80, 86, 88, 85, 87] };
+
+let MATCHES = new Map();
+const M = (id) => MATCHES.get(id);
+const team = (name) => (S.data && S.data.teams[name]) || null;
+const tNm = (tm) => (LANG === 'fr' ? tm.fr : tm.en) || tm.fr;
+const myPick = (id) => (S.data && S.data.mine[id]) || null;
+const canEdit = (m) => !!(S.key && S.data.me && !m.locked && team(m.home) && team(m.away));
+const isLive = (m) => !m.finished && (m.lstate === 'in' || (m.locked && Date.now() - Date.parse(m.date) < 140 * 60000));
+const hasLiveScore = (m) => isLive(m) && m.lhs != null && m.las != null;
+
+const flagImg = (code, cls = 'fl') =>
+  `<img class="${cls}" src="https://flagcdn.com/${cls.includes('big') ? 'h80' : 'h40'}/${code}.png" alt="" loading="lazy">`;
+
+// ---------- formats dates ----------
+let fDay, fTime, fShort, fLong;
+function makeFormatters() {
+  const loc = LANG === 'fr' ? 'fr-FR'
+    : (navigator.language || '').toLowerCase().startsWith('en') ? navigator.language : 'en-GB';
+  fDay = new Intl.DateTimeFormat(loc, { weekday: 'short', day: '2-digit', month: '2-digit' });
+  fTime = new Intl.DateTimeFormat(loc, { hour: '2-digit', minute: '2-digit' });
+  fShort = new Intl.DateTimeFormat(loc, { day: '2-digit', month: '2-digit' });
+  fLong = new Intl.DateTimeFormat(loc, { weekday: 'long', day: 'numeric', month: 'long' });
+}
+makeFormatters();
+const fmtDay = (d) => fDay.format(new Date(d)).replace('.', '');
+const fmtTime = (d) => fTime.format(new Date(d));
+const fmtMeta = (d) => `${fShort.format(new Date(d))} ${fTime.format(new Date(d))}`;
+const fmtLong = (d) => cap1(fLong.format(new Date(d)));
+function fmtRel(d) {
+  const diff = Date.parse(d) - Date.now();
+  if (diff < 60000) return t('imminent');
+  if (diff < 3600000) return t('inMin', Math.round(diff / 60000));
+  if (diff < 86400000) return t('atTime', fmtTime(d), Math.floor(diff / 3600000), Math.round((diff % 3600000) / 60000).toString().padStart(2, '0'));
+  return t('onDay', fmtDay(d), fmtTime(d));
+}
+function fmtRelPast(d) {
+  const mins = Math.max(0, Math.round((Date.now() - Date.parse(d)) / 60000));
+  if (mins < 1) return t('agoNow');
+  if (mins < 60) return t('agoMin', mins);
+  return t('agoH', Math.floor(mins / 60), mins % 60 ? (mins % 60).toString().padStart(2, '0') : '');
+}
+const dayKeyOf = (d) => { const x = new Date(d); return `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}`; };
+
+// ---------- scoring (miroir du serveur, pour l'affichage) ----------
+function actualAdvancer(m) {
+  if (m.advancer) return m.advancer;
+  if (m.finished && m.hs !== m.as) return m.hs > m.as ? m.home : m.away;
+  return null;
+}
+function ptsOf(m, pred) {
+  if (!m.finished || !pred) return null;
+  const [ph, pa] = pred;
+  if (ph === m.hs && pa === m.as) return 3;
+  if (m.stage === 'group') return Math.sign(ph - pa) === Math.sign(m.hs - m.as) ? 1 : 0;
+  const predAdv = ph > pa ? m.home : ph < pa ? m.away : null;
+  const actAdv = actualAdvancer(m);
+  return predAdv && actAdv && predAdv === actAdv ? 1 : 0;
+}
+const chipHtml = (pts) =>
+  pts == null ? '' : `<span class="chip c${pts}">${pts > 0 ? '+' + pts : '0'}</span>`;
+
+// ---------- placeholders ----------
+function phLabel(m, side) {
+  const raw = side === 'h' ? m.home : m.away;
+  let x;
+  if ((x = raw.match(/^1([A-L])$/))) return t('ph1', x[1]);
+  if ((x = raw.match(/^2([A-L])$/))) return t('ph2', x[1]);
+  if ((x = raw.match(/^3([A-L]+)$/))) return t('ph3', x[1].split('').join('·'));
+  const src = (S.data.sources[m.id] || [])[side === 'h' ? 0 : 1];
+  if (src) return src > 0 ? t('phW', src) : t('phL', -src);
+  return raw;
+}
+
+function winCls(m, side) {
+  if (!m.finished) return '';
+  const adv = m.stage === 'group' ? (m.hs === m.as ? null : m.hs > m.as ? m.home : m.away) : actualAdvancer(m);
+  if (!adv) return '';
+  return adv === (side === 'h' ? m.home : m.away) ? 'win' : 'lose';
+}
+
+// ---------- item de match (style fiche Google) ----------
+function miScore(m, side) {
+  const pred = myPick(m.id);
+  if (m.finished) return `<span class="mi-sc">${side === 'h' ? m.hs : m.as}</span>`;
+  if (hasLiveScore(m)) return `<span class="mi-sc livec">${side === 'h' ? m.lhs : m.las}</span>`;
+  if (canEdit(m)) {
+    const pend = S.dirty.get(m.id);
+    const v = pend ? pend[side === 'h' ? 0 : 1] : pred ? pred[side === 'h' ? 0 : 1] : '';
+    return `<input class="bi" data-m="${m.id}" data-s="${side}" type="number" min="0" max="30" inputmode="numeric" value="${v}">`;
+  }
+  if (pred && !m.locked) return `<span class="mi-sc mine">${pred[side === 'h' ? 0 : 1]}</span>`;
+  return '<span class="mi-sc dim">–</span>';
+}
+
+function miSide(m) {
+  if (isLive(m)) return `<span class="live">${t('liveWord')}</span><span class="live">${esc(m.lmin || '')}</span>`;
+  if (m.finished) {
+    const my = myPick(m.id);
+    return `<span>${t('finished')}</span>${my ? chipHtml(ptsOf(m, my)) : ''}`;
+  }
+  const k = dayKeyOf(m.date);
+  const day = k === dayKeyOf(Date.now()) ? t('today') : k === dayKeyOf(Date.now() + 86400000) ? t('tomorrow') : fmtDay(m.date);
+  return `<span class="day">${day}</span><span class="time">${fmtTime(m.date)}</span>`;
+}
+
+function matchItem(m, showStage) {
+  const th = team(m.home), ta = team(m.away);
+  const my = myPick(m.id);
+  const others = S.data.others[m.id] || [];
+  const expandable = m.locked && others.length > 0;
+
+  const label = showStage ? (m.grp ? t('group', m.grp) : t('stageShort')[m.stage] || I18N[LANG].stageShort[m.stage]) : '';
+  const metaR = !m.locked ? `👥 ${S.data.counts[m.id] || 0}` : expandable ? '▾' : '';
+  const teamRow = (side) => {
+    const tm = side === 'h' ? th : ta;
+    const raw = side === 'h' ? m.home : m.away;
+    return `<div class="mi-team ${tm ? '' : 'ph'} ${winCls(m, side)}">
+      ${tm ? flagImg(tm.code) : '<span class="fl ph">?</span>'}
+      <span class="mi-name">${esc(tm ? tNm(tm) : phLabel(m, side))}</span>
+      ${miScore(m, side)}
+    </div>`;
+  };
+  const mineLine = m.locked && my
+    ? `<div class="mi-mine">${t('mine')} : ${my[0]}–${my[1]}${m.finished ? ' ' + chipHtml(ptsOf(m, my)) : ''}</div>`
+    : '';
+  const othersHtml = expandable
+    ? `<div class="gm-others" data-o="${m.id}" hidden>${others.map((o) =>
+        `<div class="row"><b>${esc(o.name)}</b><span>${o.h} – ${o.a}</span>${chipHtml(o.pts)}</div>`).join('')}</div>`
+    : '';
+
+  return `<div class="mi-wrap"><div class="mi ${expandable ? 'lk' : ''}" data-gm="${m.id}" data-pair="${m.id}" ${expandable ? `title="${t('seeAll')}"` : ''}>
+      <div class="mi-main">
+        ${(label || metaR) ? `<div class="mi-meta"><span>${label}</span><span>${metaR}</span></div>` : ''}
+        ${teamRow('h')}${teamRow('a')}
+        ${mineLine}
+      </div>
+      <div class="mi-side">${miSide(m)}</div>
+    </div>${othersHtml}</div>`;
+}
+
+// ---------- vue Matchs (chronologique) ----------
+function renderMatchs() {
+  const ms = [...S.data.matches].sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+  const days = [];
+  let cur = null;
+  for (const m of ms) {
+    const k = dayKeyOf(m.date);
+    if (!cur || cur.k !== k) { cur = { k, date: m.date, items: [] }; days.push(cur); }
+    cur.items.push(m);
+  }
+  const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
+  const isPast = (day) => { const d = new Date(day.date); d.setHours(0, 0, 0, 0); return d < startToday; };
+  const pastDays = days.filter(isPast);
+  const visible = S.showPast ? days : days.filter((d) => !isPast(d));
+  const todayK = dayKeyOf(Date.now());
+  const tomorrowK = dayKeyOf(Date.now() + 86400000);
+
+  const dayLabel = (d) =>
+    d.k === todayK ? `${t('today')} · ${fmtLong(d.date)}`
+      : d.k === tomorrowK ? `${t('tomorrow')} · ${fmtLong(d.date)}`
+      : fmtLong(d.date);
+
+  $('#daylist').innerHTML =
+    (pastDays.length ? `<button class="pill-ghost" id="btn-past">${S.showPast ? t('hidePast') : t('showPast', pastDays.length)}</button>` : '') +
+    visible.map((d) => `
+      <div class="dayhead">${dayLabel(d)}<span class="n">· ${d.items.length}</span></div>
+      <div class="day-grid">${d.items.map((m) => matchItem(m, true)).join('')}</div>`).join('');
+}
+
+// ---------- arbre ----------
+function bmRow(m, side) {
+  const name = side === 'h' ? m.home : m.away;
+  const tm = team(name);
+  const flag = tm ? flagImg(tm.code) : '<span class="fl ph">?</span>';
+  const label = tm
+    ? `<span class="tn" title="${esc(tNm(tm))}">${tm.tri}</span>`
+    : `<span class="tn">${esc(phLabel(m, side))}</span>`;
+  const pred = myPick(m.id);
+  let cell;
+  if (m.finished) cell = `<span class="sc">${side === 'h' ? m.hs : m.as}</span>`;
+  else if (hasLiveScore(m)) cell = `<span class="sc live">${side === 'h' ? m.lhs : m.las}</span>`;
+  else if (canEdit(m)) {
+    const pend = S.dirty.get(m.id);
+    const v = pend ? pend[side === 'h' ? 0 : 1] : pred ? pred[side === 'h' ? 0 : 1] : '';
+    cell = `<input class="bi" data-m="${m.id}" data-s="${side}" type="number" min="0" max="30" inputmode="numeric" value="${v}">`;
+  } else if (pred) cell = `<span class="sc mine">${pred[side === 'h' ? 0 : 1]}</span>`;
+  else cell = '<span class="sc dim">·</span>';
+  return `<div class="bm-row ${tm ? '' : 'ph'} ${winCls(m, side)}">${flag}${label}${cell}</div>`;
+}
+
+function bmCard(id, cls = '') {
+  const m = M(id);
+  if (!m) return '';
+  const pred = myPick(id);
+  const chip = m.finished && pred ? chipHtml(ptsOf(m, pred)) : '';
+  const right = isLive(m)
+    ? `<span class="gm-live">${esc(m.lmin || 'LIVE')}</span>`
+    : esc((m.loc || '').replace(' Stadium', ''));
+  return `<div class="bm ${m.finished ? 'done' : ''} ${cls}" data-m="${id}" data-pair="${id}">${chip}
+    ${bmRow(m, 'h')}${bmRow(m, 'a')}
+    <div class="bm-meta"><span>${fmtMeta(m.date)}</span><span>${right}</span></div>
+  </div>`;
+}
+
+function bcol(ids, capTxt) {
+  let duos = '';
+  if (ids.length === 1) duos = `<div class="duo solo">${bmCard(ids[0])}</div>`;
+  else for (let i = 0; i < ids.length; i += 2) duos += `<div class="duo">${bmCard(ids[i])}${bmCard(ids[i + 1])}</div>`;
+  return `<div class="bcol"><div class="bcap">${capTxt}</div><div class="bbody">${duos}</div></div>`;
+}
+
+function champHtml() {
+  const fin = M(104);
+  const adv = fin ? actualAdvancer(fin) : null;
+  let sub = null, name = null;
+  if (adv) { sub = t('champWorld'); name = adv; }
+  else {
+    const p = myPick(104);
+    if (p && fin && team(fin.home) && team(fin.away)) { sub = t('champYours'); name = p[0] > p[1] ? fin.home : fin.away; }
+  }
+  if (!name) return `<div class="champ"><div class="t">${t('champ')}</div><div class="q">${t('champTbd')}</div></div>`;
+  const tm = team(name);
+  return `<div class="champ"><div class="t">🏆 ${sub}</div>${tm ? flagImg(tm.code, 'fl big') : ''}<div class="n">${esc(tm ? tNm(tm) : name)}</div></div>`;
+}
+
+function centerBracket() {
+  const sc = $('.bkt-scroll');
+  if (sc && sc.clientWidth > 0 && sc.scrollWidth > sc.clientWidth) {
+    sc.scrollLeft = (sc.scrollWidth - sc.clientWidth) / 2;
+    S.bktCentered = true;
+  }
+}
+
+function renderBracket() {
+  const caps = I18N[LANG].caps;
+  const order = ['r32', 'r16', 'qf', 'sf'];
+  const left = `<div class="bkt-half bkL">${order.map((k) => bcol(SIDE_L[k], caps[k])).join('')}</div>`;
+  const right = `<div class="bkt-half bkR">${[...order].reverse().map((k) => bcol(SIDE_R[k], caps[k])).join('')}</div>`;
+  const center = `<div class="bcol"><div class="bcap">${t('finalCap')}</div><div class="bbody center">
+      ${champHtml()}
+      ${bmCard(104, 'stub-l stub-r')}
+      <div><div class="third-cap">${t('thirdCap')}</div>${bmCard(103)}</div>
+    </div></div>`;
+  $('#bracket').innerHTML = left + center + right;
+  if (!S.bktCentered) centerBracket();
+}
+
+// ---------- groupes ----------
+function standingsHtml(ms) {
+  const names = [];
+  for (const m of ms) for (const n of [m.home, m.away]) if (!names.includes(n)) names.push(n);
+  const st = new Map(names.map((n) => [n, { n, pj: 0, w: 0, d: 0, l: 0, pts: 0, bp: 0, bc: 0, last: null }]));
+  for (const m of [...ms].sort((a, b) => a.date.localeCompare(b.date))) {
+    if (!m.finished) continue;
+    const h = st.get(m.home), a = st.get(m.away);
+    h.pj++; a.pj++; h.bp += m.hs; h.bc += m.as; a.bp += m.as; a.bc += m.hs;
+    if (m.hs > m.as) { h.w++; a.l++; h.pts += 3; }
+    else if (m.hs < m.as) { a.w++; h.l++; a.pts += 3; }
+    else { h.d++; a.d++; h.pts++; a.pts++; }
+    h.last = { mine: m.hs, opp: m.as };
+    a.last = { mine: m.as, opp: m.hs };
+  }
+  const dispName = (n) => { const tm = team(n); return tm ? tNm(tm) : n; };
+  const rows = [...st.values()].sort((x, y) =>
+    y.pts - x.pts || (y.bp - y.bc) - (x.bp - x.bc) || y.bp - x.bp || dispName(x.n).localeCompare(dispName(y.n), LANG)
+  );
+  const H = t('stH');
+  const fchip = (r) => {
+    if (!r.last) return '';
+    const cls = r.last.mine > r.last.opp ? 'w' : r.last.mine < r.last.opp ? 'l' : 'd';
+    return `<span class="fchip ${cls}">${r.last.mine}-${r.last.opp}</span>`;
+  };
+  return `<table class="standings">
+    <tr><th></th><th class="t">${H[1]}</th><th></th><th>${H[2]}</th><th>${H[3]}</th><th>${H[4]}</th><th>${H[5]}</th><th>${H[6]}</th><th>${H[7]}</th></tr>
+    ${rows.map((r, i) => {
+      const tm = team(r.n);
+      const gd = r.bp - r.bc;
+      return `<tr class="${i < 2 ? 'q' : ''}">
+        <td class="rkk">${i + 1}</td>
+        <td class="t"><span class="in">${tm ? flagImg(tm.code) : ''}<span class="nm">${esc(dispName(r.n))}</span></span></td>
+        <td>${fchip(r)}</td>
+        <td>${r.pj}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${gd > 0 ? '+' + gd : gd}</td><td class="pts">${r.pts}</td></tr>`;
+    }).join('')}
+  </table>`;
+}
+
+function renderGroups() {
+  const letters = [...new Set(S.data.matches.filter((m) => m.grp).map((m) => m.grp))].sort();
+  $('#groups').innerHTML = letters.map((g) => {
+    const ms = S.data.matches.filter((m) => m.grp === g).sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+    return `<div class="gcard"><h3>${t('group', g)}</h3>${standingsHtml(ms)}<div class="gms">${ms.map((m) => matchItem(m, false)).join('')}</div></div>`;
+  }).join('');
+}
+
+// ---------- classement joueurs ----------
+function renderBoard() {
+  const lb = S.data.leaderboard;
+  $('#board-sub').textContent = t('players', lb.length);
+  if (!lb.length) {
+    $('#board').innerHTML = `<div class="empty">${t('boardEmpty')}</div>`;
+    return;
+  }
+  $('#board').innerHTML = lb.map((r, i) => `
+    <div class="board-row ${r.isMe ? 'me' : ''}">
+      <span class="rk">${i === 0 && r.pts > 0 ? '👑' : i + 1}</span>
+      <span class="nm">${esc(r.name)}<small>${t('exactSub', r.exact, r.outcome)}</small></span>
+      <span class="pt">${r.pts}<small> pt${r.pts > 1 ? 's' : ''}</small></span>
+    </div>`).join('');
+}
+
+function renderRules() {
+  const open = S.data.matches.filter((m) => !m.locked && team(m.home) && team(m.away)).length;
+  const mineCount = Object.keys(S.data.mine).length;
+  const sync = S.data.lastSync ? fmtRelPast(S.data.lastSync) : '—';
+  $('#rules').innerHTML = `
+    <b>${t('rules')}</b><br>
+    <span class="dot" style="background:#137333"></span>${t('rule3')}<br>
+    <span class="dot" style="background:#e8710a"></span>${t('rule1')}<br>
+    <span class="dot" style="background:#80868b"></span>${t('rule0')}<br>
+    ${t('ruleKo')}<br><br>
+    ${S.data.me ? t('myCount', mineCount, open) + '<br>' : ''}
+    <span style="opacity:.75">${t('syncInfo', sync)}</span>`;
+}
+
+// ---------- header ----------
+const vsShort = (m) => `${team(m.home)?.tri || '?'}–${team(m.away)?.tri || '?'}`;
+function liveLabel(m) {
+  const a = team(m.home)?.tri || '?';
+  const b = team(m.away)?.tri || '?';
+  return m.lhs != null ? `${a} ${m.lhs}–${m.las} ${b}${m.lmin ? ' · ' + esc(m.lmin) : ''}` : `${a}–${b}`;
+}
+function stageSubTitle() {
+  const g = S.data.matches.filter((m) => m.stage === 'group' && !m.finished);
+  if (g.length) return t('mdGroup', Math.min(...g.map((m) => m.round || 1)));
+  const next = S.data.matches.find((m) => !m.finished && m.stage !== 'group');
+  if (next) return I18N[LANG].stageSubKo[next.stage];
+  return t('over');
+}
+function renderHeader() {
+  $('#h-pool').textContent = S.data.pool.name;
+  $('#h-sub').textContent = stageSubTitle();
+  document.title = t('docTitle', S.data.pool.name);
+
+  const live = S.data.matches.filter(isLive);
+  const next = S.data.matches.filter((m) => !m.locked).sort((a, b) => a.date.localeCompare(b.date))[0];
+  $('#h-next').innerHTML = live.length
+    ? `<span class="live">${t('liveNow', live.slice(0, 2).map(liveLabel).join(' · '))}</span>`
+    : next ? t('nextMatch', vsShort(next), fmtRel(next.date)) : t('over');
+
+  const u = $('#h-user');
+  if (S.data.me) {
+    const row = S.data.leaderboard.find((r) => r.isMe);
+    u.innerHTML = `<span class="userchip">👤 ${esc(S.data.me.name)} · ${t('pts', row ? row.pts : 0)}
+      <button id="btn-switch">${t('switch')}</button></span>`;
+  } else {
+    u.innerHTML = `<span class="userchip"><button id="btn-join2" style="font-size:13px">${t('join')}</button></span>`;
+  }
+}
+
+// ---------- onglets ----------
+function renderTabs() {
+  $('#tabs').innerHTML = VIEWS.map((v) =>
+    `<button class="tab ${S.view === v ? 'on' : ''}" data-view-btn="${v}">${t('tab_' + v)}</button>`).join('');
+}
+function switchView(v) {
+  if (!VIEWS.includes(v)) return;
+  S.view = v;
+  localStorage.setItem('pronos26:view', v);
+  document.body.dataset.view = v;
+  renderTabs();
+  if (v === 'apercu' || v === 'arbre') setTimeout(centerBracket, 30);
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
+
+// ---------- pronos express ----------
+function qpMatches() {
+  if (!S.data) return [];
+  const limit = Date.now() + 24 * 3600000;
+  return S.data.matches
+    .filter((m) => !m.locked && team(m.home) && team(m.away) && !S.data.mine[m.id] && !S.dirty.has(m.id) && Date.parse(m.date) <= limit)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+function renderBanner() {
+  const n = S.data.me ? qpMatches().length : 0;
+  const b = $('#qp-banner');
+  b.classList.toggle('hidden', n === 0);
+  if (n) {
+    $('#qp-banner-txt').textContent = t('qpBanner', n);
+    $('#qp-go').textContent = t('qpGo');
+  }
+}
+function qpRow(m) {
+  const th = team(m.home), ta = team(m.away);
+  return `<div class="qp-row" data-pair="${m.id}">
+    <span class="qp-when">${fmtDay(m.date)}<br>${fmtTime(m.date)}</span>
+    <span class="qp-t h"><span class="qn">${esc(tNm(th))}</span> ${flagImg(th.code)}</span>
+    <span class="qp-in">
+      <input class="bi" data-m="${m.id}" data-s="h" type="number" min="0" max="30" inputmode="numeric">
+      <span style="color:var(--muted)">–</span>
+      <input class="bi" data-m="${m.id}" data-s="a" type="number" min="0" max="30" inputmode="numeric">
+    </span>
+    <span class="qp-t a">${flagImg(ta.code)} <span class="qn">${esc(tNm(ta))}</span></span>
+    <span class="qp-st" id="qp-st-${m.id}"></span>
+  </div>`;
+}
+function openQP() {
+  const ms = qpMatches();
+  $('#qp-title').textContent = t('qpTitle');
+  $('#qp-sub').textContent = ms.length ? t('qpSub') : t('qpEmpty');
+  $('#qp-list').innerHTML = ms.map(qpRow).join('');
+  $('#qp-close').textContent = t('qpClose');
+  $('#qp').classList.remove('hidden');
+  localStorage.setItem(QPKEY, String(Date.now()));
+  const first = $('#qp-list input.bi');
+  if (first) setTimeout(() => first.focus(), 60);
+}
+function closeQP() {
+  $('#qp').classList.add('hidden');
+  render();
+}
+const qpVisible = () => !$('#qp').classList.contains('hidden');
+
+// ---------- rendu global ----------
+function applyStatic() {
+  document.documentElement.lang = LANG;
+  $('#t-brand').textContent = t('brand');
+  $('#t-matchs-h2').textContent = t('matchsH2');
+  $('#t-matchs-sub').textContent = t('matchsSub');
+  $('#t-bracket-h2').textContent = t('bracketH2');
+  $('#t-bracket-sub').textContent = t('bracketSub');
+  $('#t-board-h2').textContent = t('boardH2');
+  $('#t-groups-h2').textContent = t('groupsH2');
+  $('#t-groups-sub').textContent = t('groupsSub');
+  $('#t-join-p').textContent = t('joinP');
+  $('#t-join-name').textContent = t('joinName');
+  $('#j-name').placeholder = t('joinNamePh');
+  $('#t-join-pin').textContent = t('joinPin');
+  $('#t-join-go').textContent = t('joinGo');
+  $('#j-view').textContent = t('joinView');
+  $('#btn-lang').textContent = LANG === 'fr' ? 'EN' : 'FR';
+  renderTabs();
+  if (S.data) $('#join-title').textContent = t('joinTitle', S.data.pool.name);
+}
+
+function render() {
+  renderHeader();
+  renderMatchs();
+  renderBracket();
+  renderGroups();
+  renderBoard();
+  renderRules();
+  renderBanner();
+  $('#foot').textContent = t('foot');
+}
+
+// ---------- réseau ----------
+async function api(method, url, body) {
+  return fetch(url, {
+    method,
+    headers: { 'content-type': 'application/json', ...(S.key ? { 'x-player-key': S.key } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+async function fetchData() {
+  const res = await api('GET', `/api/pool/${encodeURIComponent(TOKEN)}`);
+  if (res.status === 404) {
+    document.body.innerHTML = `<div class="admin-wrap"><div class="admin-card" style="text-align:center">
+      <h2>${t('invalidLink')}</h2><p style="color:var(--muted)">${t('invalidLinkP')}</p></div></div>`;
+    throw new Error('pool 404');
+  }
+  const json = await res.json();
+  if (S.key && !json.me) { localStorage.removeItem(LSKEY); S.key = ''; }
+  S.data = json;
+  MATCHES = new Map(json.matches.map((m) => [m.id, m]));
+}
+
+// ---------- sauvegarde ----------
+function scheduleSave() {
+  clearTimeout(S.saveTimer);
+  S.saveTimer = setTimeout(save, 900);
+}
+
+async function save() {
+  if (!S.dirty.size || !S.key) return;
+  const picks = [...S.dirty].map(([m, [h, a]]) => ({ m, h, a }));
+  try {
+    const res = await api('PUT', `/api/pool/${encodeURIComponent(TOKEN)}/predictions`, { picks });
+    if (res.status === 401) { toast(t('sessionLost'), true); openJoin(); return; }
+    const j = await res.json();
+    const rejected = new Set((j.rejected || []).map((r) => Number(r.m)));
+    for (const p of picks) {
+      if (rejected.has(p.m)) continue;
+      S.data.mine[p.m] = [p.h, p.a];
+      const st = document.getElementById('qp-st-' + p.m);
+      if (st) st.textContent = '✓';
+    }
+    S.dirty.clear();
+    if (j.saved > 0) toast(t('saved', j.saved));
+    if (j.rejected && j.rejected.length) toast(`⚠️ ${trReason(j.rejected[0].reason)}`, true);
+    renderRules();
+    renderBanner();
+    // resynchronise les inputs des sections où l'on n'est pas en train de taper
+    const ae = document.activeElement;
+    if (!ae || !ae.closest || !ae.closest('#sec-matchs')) renderMatchs();
+    if (!ae || !ae.closest || !ae.closest('#sec-groups')) renderGroups();
+  } catch {
+    toast(t('offline'), true);
+  }
+}
+
+document.addEventListener('input', (e) => {
+  const el = e.target;
+  if (!el.classList || !el.classList.contains('bi')) return;
+  const box = el.closest('[data-pair]') || document;
+  const mid = Number(el.dataset.m);
+  const m = M(mid);
+  const hEl = box.querySelector('input.bi[data-s="h"]');
+  const aEl = box.querySelector('input.bi[data-s="a"]');
+  if (!hEl || !aEl || !m) return;
+  const h = hEl.value === '' ? null : Number(hEl.value);
+  const a = aEl.value === '' ? null : Number(aEl.value);
+  const valid = Number.isInteger(h) && Number.isInteger(a) && h >= 0 && a >= 0 && h <= 30 && a <= 30;
+  const koDraw = valid && m.stage !== 'group' && h === a;
+  [hEl, aEl].forEach((x) => x.classList.toggle('bad', koDraw));
+  if (koDraw) { toast(t('noDraw'), true); return; }
+  if (valid) { S.dirty.set(mid, [h, a]); scheduleSave(); }
+  else S.dirty.delete(mid);
+});
+
+document.addEventListener('click', (e) => {
+  const tabBtn = e.target.closest('[data-view-btn]');
+  if (tabBtn) { switchView(tabBtn.dataset.viewBtn); return; }
+  const mi = e.target.closest('.mi.lk');
+  if (mi && !e.target.closest('input')) {
+    const panel = document.querySelector(`.gm-others[data-o="${mi.dataset.gm}"]`);
+    if (panel) panel.hidden = !panel.hidden;
+    return;
+  }
+  if (e.target.id === 'btn-past') { S.showPast = !S.showPast; renderMatchs(); return; }
+  if (e.target.id === 'btn-switch') {
+    if (confirm(t('confirmSwitch'))) {
+      localStorage.removeItem(LSKEY);
+      S.key = '';
+      openJoin();
+    }
+  }
+  if (e.target.id === 'btn-join2') openJoin();
+  if (e.target.id === 'qp-go') openQP();
+  if (e.target.id === 'qp-close') closeQP();
+});
+
+// ---------- toast ----------
+let toastTimer = null;
+function toast(msg, warn = false) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.toggle('warn', warn);
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+// ---------- inscription ----------
+function openJoin() {
+  $('#join-title').textContent = S.data ? t('joinTitle', S.data.pool.name) : t('joinGo');
+  $('#j-err').textContent = '';
+  $('#join').classList.remove('hidden');
+  setTimeout(() => $('#j-name').focus(), 50);
+}
+
+$('#join-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = $('#j-name').value.trim();
+  const pin = $('#j-pin').value.trim();
+  try {
+    const res = await fetch(`/api/pool/${encodeURIComponent(TOKEN)}/join`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name, pin }),
+    });
+    const j = await res.json();
+    if (!res.ok) {
+      $('#j-err').textContent = j.error === 'pin' ? t('joinPinErr') : trReason(j.error) || t('joinSrvErr');
+      return;
+    }
+    S.key = j.key;
+    localStorage.setItem(LSKEY, j.key);
+    $('#join').classList.add('hidden');
+    toast(j.rejoined ? t('welcomeBack', j.name) : t('welcome', j.name));
+    await fetchData();
+    render();
+    if (qpMatches().length) openQP();
+  } catch {
+    $('#j-err').textContent = t('joinSrvErr');
+  }
+});
+
+$('#j-view').addEventListener('click', () => {
+  S.viewOnly = true;
+  $('#join').classList.add('hidden');
+});
+
+// ---------- toggles ----------
+$('#btn-lang').addEventListener('click', () => {
+  LANG = LANG === 'fr' ? 'en' : 'fr';
+  localStorage.setItem(LSLANG, LANG);
+  makeFormatters();
+  applyStatic();
+  if (S.data) render();
+  if (qpVisible()) openQP();
+});
+
+$('#btn-theme').addEventListener('click', () => {
+  THEME = THEME === 'dark' ? 'light' : 'dark';
+  localStorage.setItem('pronos26:theme', THEME);
+  applyTheme();
+});
+
+// ---------- boucle ----------
+const editingNow = () =>
+  S.dirty.size > 0 ||
+  qpVisible() ||
+  (document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('bi'));
+
+setInterval(async () => {
+  if (editingNow()) return;
+  try { await fetchData(); render(); } catch { /* réessaie au prochain tick */ }
+}, 60000);
+
+setInterval(() => { if (S.data && !editingNow()) renderHeader(); }, 30000);
+
+(async function init() {
+  applyTheme();
+  applyStatic();
+  try {
+    await fetchData();
+  } catch { return; }
+  resolveLang();
+  applyStatic();
+  render();
+  if (!S.key && !S.viewOnly) {
+    openJoin();
+  } else if (S.data.me && qpMatches().length && Date.now() - (+localStorage.getItem(QPKEY) || 0) > 12 * 3600000) {
+    openQP();
+  }
+})();

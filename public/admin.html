@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin · Pronos Mondial 2026</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚽</text></svg>">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="admin-wrap">
+    <h1 style="letter-spacing:-.5px">⚽ Pronos Mondial 2026 — Admin</h1>
+
+    <div class="admin-card" id="login" hidden>
+      <h2>Clé admin</h2>
+      <form class="inline-form" id="login-form">
+        <input id="key-input" placeholder="Colle ta clé admin (affichée au démarrage du serveur)" autocomplete="off">
+        <button class="btn" type="submit">Entrer</button>
+      </form>
+      <div class="err" id="login-err" style="color:var(--red);font-size:13px;margin-top:8px"></div>
+    </div>
+
+    <div id="panel" hidden>
+      <div class="admin-card">
+        <h2>Mes pools</h2>
+        <p style="color:var(--muted);font-size:13px;margin-top:-6px">
+          Chaque pool a son lien secret : seuls ceux qui ont le lien peuvent le voir. Les participants ne voient jamais les autres pools.
+        </p>
+        <div id="pools"></div>
+        <form class="inline-form" id="create-form" style="margin-top:16px">
+          <input id="pool-name" placeholder="Nom du nouveau pool (ex. Collègues)" maxlength="40" required>
+          <select id="pool-lang" class="mini" style="padding:7px 10px" title="Langue par défaut">
+            <option value="fr">FR</option>
+            <option value="en">EN</option>
+          </select>
+          <button class="btn" type="submit">Créer</button>
+        </form>
+      </div>
+
+      <div class="admin-card">
+        <h2>Données</h2>
+        <p style="color:var(--muted);font-size:13px">
+          Calendrier & scores : fixturedownload.com — synchro auto toutes les 30 min.
+          Dernière synchro : <b id="last-sync">—</b>
+        </p>
+        <button class="mini" id="sync-btn">🔄 Synchroniser maintenant</button>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let KEY = localStorage.getItem('pronos26:admin') || '';
+
+const url = new URL(location.href);
+if (url.searchParams.get('key')) {
+  KEY = url.searchParams.get('key');
+  localStorage.setItem('pronos26:admin', KEY);
+  history.replaceState(null, '', '/');
+}
+
+let toastTimer;
+function toast(msg, warn = false) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.toggle('warn', warn);
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+async function api(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: { 'content-type': 'application/json', 'x-admin-key': KEY },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 403) { show(false); throw new Error('clé invalide'); }
+  return res.json();
+}
+
+function show(ok) {
+  $('#login').hidden = ok;
+  $('#panel').hidden = !ok;
+}
+
+function fmtSync(d) {
+  if (!d) return '—';
+  const mins = Math.max(0, Math.round((Date.now() - Date.parse(d)) / 60000));
+  return mins < 1 ? "à l'instant" : mins < 60 ? `il y a ${mins} min` : `il y a ${Math.floor(mins / 60)} h`;
+}
+
+async function load() {
+  const j = await api('GET', '/api/admin/pools');
+  show(true);
+  $('#last-sync').textContent = fmtSync(j.lastSync);
+  $('#pools').innerHTML = j.pools.map((p) => {
+    const link = `${location.origin}/p/${p.token}`;
+    return `<div class="pool-row">
+      <b>${p.name}</b>
+      <span style="color:var(--muted);font-size:12px">${p.players} joueur${p.players > 1 ? 's' : ''}</span>
+      <span class="lnk">${link}</span>
+      <button class="mini" data-lang-id="${p.id}" data-lang-cur="${p.lang}" title="Langue par défaut du pool (les joueurs peuvent changer)">🌐 ${(p.lang || 'fr').toUpperCase()}</button>
+      <button class="mini" data-copy="${link}">📋 Copier</button>
+      <a class="mini" style="text-decoration:none" href="/p/${p.token}" target="_blank">Ouvrir</a>
+      <button class="mini danger" data-del="${p.id}" data-name="${p.name}">Supprimer</button>
+    </div>`;
+  }).join('');
+}
+
+document.addEventListener('click', async (e) => {
+  const copy = e.target.dataset && e.target.dataset.copy;
+  if (copy) { await navigator.clipboard.writeText(copy); toast('Lien copié ✓'); return; }
+  const langId = e.target.dataset && e.target.dataset.langId;
+  if (langId) {
+    const next = e.target.dataset.langCur === 'fr' ? 'en' : 'fr';
+    await api('PATCH', '/api/admin/pools/' + langId, { lang: next });
+    toast(`Langue par défaut : ${next.toUpperCase()} ✓`);
+    load();
+    return;
+  }
+  const del = e.target.dataset && e.target.dataset.del;
+  if (del) {
+    if (!confirm(`Supprimer le pool « ${e.target.dataset.name} » et tous ses pronos ?`)) return;
+    await api('DELETE', '/api/admin/pools/' + del);
+    toast('Pool supprimé');
+    load();
+  }
+});
+
+$('#login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  KEY = $('#key-input').value.trim();
+  localStorage.setItem('pronos26:admin', KEY);
+  try { await load(); } catch { $('#login-err').textContent = 'Clé invalide.'; }
+});
+
+$('#create-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = $('#pool-name').value.trim();
+  if (!name) return;
+  await api('POST', '/api/admin/pools', { name, lang: $('#pool-lang').value });
+  $('#pool-name').value = '';
+  toast(`Pool « ${name} » créé ✓`);
+  load();
+});
+
+$('#sync-btn').addEventListener('click', async () => {
+  $('#sync-btn').disabled = true;
+  try {
+    const r = await api('POST', '/api/admin/sync');
+    toast(r.ok ? `✓ ${r.matches} matchs synchronisés` : `⚠️ ${r.error || 'échec'}`, !r.ok);
+  } finally {
+    $('#sync-btn').disabled = false;
+    load();
+  }
+});
+
+(async () => {
+  if (!KEY) { show(false); return; }
+  try { await load(); } catch { show(false); }
+})();
+</script>
+</body>
+</html>
