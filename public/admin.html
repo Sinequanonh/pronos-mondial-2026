@@ -12,15 +12,23 @@
     <h1 style="letter-spacing:-.5px">⚽ Pronos Mondial 2026 — Admin</h1>
 
     <div class="admin-card" id="login" hidden>
-      <h2>Clé admin</h2>
-      <form class="inline-form" id="login-form">
-        <input id="key-input" placeholder="Colle ta clé admin (affichée au démarrage du serveur)" autocomplete="off">
-        <button class="btn" type="submit">Entrer</button>
-      </form>
+      <h2>Connexion</h2>
+      <p style="color:var(--muted);font-size:13px;margin-top:-6px">Accès réservé à l'administrateur du jeu.</p>
+      <div id="gsi" style="margin:12px 0 4px"></div>
+      <div id="legacy" hidden>
+        <form class="inline-form" id="login-form">
+          <input id="key-input" placeholder="Clé API locale (affichée au démarrage du serveur)" autocomplete="off">
+          <button class="btn" type="submit">Entrer</button>
+        </form>
+      </div>
       <div class="err" id="login-err" style="color:var(--red);font-size:13px;margin-top:8px"></div>
     </div>
 
     <div id="panel" hidden>
+      <div class="admin-card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 24px">
+        <span style="font-size:13px;color:var(--muted)">Connecté : <b id="who" style="color:inherit">—</b></span>
+        <button class="mini" id="logout-btn">Se déconnecter</button>
+      </div>
       <div class="admin-card">
         <h2>Mes pools</h2>
         <p style="color:var(--muted);font-size:13px;margin-top:-6px">
@@ -53,12 +61,8 @@
 const $ = (s) => document.querySelector(s);
 let KEY = localStorage.getItem('pronos26:admin') || '';
 
-const url = new URL(location.href);
-if (url.searchParams.get('key')) {
-  KEY = url.searchParams.get('key');
-  localStorage.setItem('pronos26:admin', KEY);
-  history.replaceState(null, '', '/');
-}
+// l'accès par ?key= n'existe plus (les URL fuitent) — on nettoie juste l'adresse
+if (new URL(location.href).searchParams.has('key')) history.replaceState(null, '', '/');
 
 let toastTimer;
 function toast(msg, warn = false) {
@@ -73,10 +77,10 @@ function toast(msg, warn = false) {
 async function api(method, path, body) {
   const res = await fetch(path, {
     method,
-    headers: { 'content-type': 'application/json', 'x-admin-key': KEY },
+    headers: { 'content-type': 'application/json', ...(KEY ? { 'x-admin-key': KEY } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (res.status === 403) { show(false); throw new Error('clé invalide'); }
+  if (res.status === 403) { show(false); throw new Error('accès refusé'); }
   return res.json();
 }
 
@@ -173,8 +177,30 @@ $('#login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   KEY = $('#key-input').value.trim();
   localStorage.setItem('pronos26:admin', KEY);
-  try { await load(); } catch { $('#login-err').textContent = 'Clé invalide.'; }
+  try { await load(); $('#who').textContent = 'clé API locale'; } catch { $('#login-err').textContent = 'Clé invalide.'; }
 });
+
+$('#logout-btn').addEventListener('click', async () => {
+  localStorage.removeItem('pronos26:admin');
+  KEY = '';
+  await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+  location.reload();
+});
+
+async function onGoogle(resp) {
+  try {
+    const r = await fetch('/api/auth/google', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ credential: resp.credential }),
+    });
+    const j = await r.json();
+    if (!r.ok) { $('#login-err').textContent = j.error || 'Connexion refusée.'; return; }
+    location.reload();
+  } catch {
+    $('#login-err').textContent = 'Impossible de joindre le serveur.';
+  }
+}
 
 $('#create-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -198,8 +224,28 @@ $('#sync-btn').addEventListener('click', async () => {
 });
 
 (async () => {
-  if (!KEY) { show(false); return; }
-  try { await load(); } catch { show(false); }
+  // 1) session Google ? 2) clé API locale ? 3) sinon, écran de connexion
+  const me = await fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  if (me) {
+    $('#who').textContent = me.email;
+    try { await load(); return; } catch { /* continue */ }
+  }
+  if (KEY) {
+    try { await load(); $('#who').textContent = 'clé API locale'; return; } catch { /* continue */ }
+  }
+  show(false);
+  const cfg = await fetch('/api/auth/config').then((r) => r.json()).catch(() => ({ clientId: null }));
+  if (cfg.clientId) {
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.onload = () => {
+      google.accounts.id.initialize({ client_id: cfg.clientId, callback: onGoogle });
+      google.accounts.id.renderButton($('#gsi'), { theme: 'outline', size: 'large', text: 'signin_with', width: 280 });
+    };
+    document.head.appendChild(s);
+  } else {
+    $('#legacy').hidden = false; // dev local sans SSO configuré
+  }
 })();
 </script>
 </body>

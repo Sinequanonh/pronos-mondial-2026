@@ -13,6 +13,32 @@ const SYNC_EVERY_MS = 30 * 60 * 1000;
 
 const token = () => crypto.randomBytes(8).toString('base64url');
 const hashPin = (pin) => crypto.createHash('sha256').update(String(pin)).digest('hex');
+
+// ---------- SSO Google : seul cet email a accès à l'admin ----------
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'leobaeckerpro@gmail.com').toLowerCase();
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || null;
+const SESSION_DAYS = 30;
+
+const parseCookies = (req) =>
+  Object.fromEntries((req.headers.cookie || '').split(';')
+    .map((v) => v.trim().split('=').map(decodeURIComponent))
+    .filter((a) => a.length === 2 && a[0]));
+const signPart = (p) => crypto.createHmac('sha256', adminKey || 'boot').update(p).digest('base64url');
+const makeSession = (email) => {
+  const p = Buffer.from(JSON.stringify({ email, exp: Date.now() + SESSION_DAYS * 86400000 })).toString('base64url');
+  return p + '.' + signPart(p);
+};
+function readSession(req) {
+  try {
+    const raw = parseCookies(req).admin_session;
+    if (!raw || !raw.includes('.')) return null;
+    const [p, sig] = raw.split('.');
+    const want = signPart(p);
+    if (sig.length !== want.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want))) return null;
+    const s = JSON.parse(Buffer.from(p, 'base64url').toString());
+    return s.exp > Date.now() && s.email === ADMIN_EMAIL ? s : null;
+  } catch { return null; }
+}
 const locked = (m) => Date.parse(m.date_utc) <= Date.now();
 const finished = (m) => m.home_score != null && m.away_score != null;
 
@@ -210,11 +236,43 @@ app.put('/api/pool/:token/predictions', ah(async (req, res) => {
   res.json({ saved, rejected });
 }));
 
+// ---------- authentification admin ----------
+app.get('/api/auth/config', (_req, res) => res.json({ clientId: GOOGLE_CLIENT_ID }));
+
+app.get('/api/auth/me', (req, res) => {
+  const s = readSession(req);
+  if (!s) return res.status(401).json({ error: 'non connecté' });
+  res.json({ email: s.email });
+});
+
+app.post('/api/auth/logout', (_req, res) => {
+  res.setHeader('Set-Cookie', 'admin_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax');
+  res.json({ ok: true });
+});
+
+app.post('/api/auth/google', ah(async (req, res) => {
+  if (!GOOGLE_CLIENT_ID) return res.status(400).json({ error: 'SSO non configuré' });
+  const credential = String(req.body.credential || '');
+  if (!credential || credential.length > 4096) return res.status(400).json({ error: 'credential manquant' });
+  const r = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(credential),
+    { signal: AbortSignal.timeout(10000) });
+  if (!r.ok) return res.status(401).json({ error: 'Jeton Google invalide' });
+  const t = await r.json();
+  if (t.aud !== GOOGLE_CLIENT_ID) return res.status(401).json({ error: 'Mauvais client OAuth' });
+  if (String(t.email || '').toLowerCase() !== ADMIN_EMAIL || t.email_verified !== 'true') {
+    return res.status(403).json({ error: 'Cet email n\'est pas autorisé' });
+  }
+  res.setHeader('Set-Cookie',
+    `admin_session=${makeSession(ADMIN_EMAIL)}; Max-Age=${SESSION_DAYS * 86400}; Path=/; HttpOnly; SameSite=Lax${ON_VERCEL ? '; Secure' : ''}`);
+  res.json({ ok: true, email: ADMIN_EMAIL });
+}));
+
 // ---------- API admin ----------
+// Accès : session Google (cookie) ou clé API en en-tête (scripts/CLI). Jamais via ?key= (fuite d'URL).
 function admin(req, res, next) {
-  const k = req.get('x-admin-key') || req.query.key;
-  if (k !== adminKey) return res.status(403).json({ error: 'Clé admin invalide' });
-  next();
+  if (readSession(req)) return next();
+  if ((req.get('x-admin-key') || '') === adminKey) return next();
+  return res.status(403).json({ error: 'Accès admin refusé' });
 }
 
 app.get('/api/admin/pools', admin, ah(async (_req, res) => {
@@ -322,7 +380,7 @@ app.post('/api/admin/sync', admin, ah(async (_req, res) => {
 // ---------- cron Vercel (filet de sécurité quotidien) ----------
 app.get('/api/cron', ah(async (req, res) => {
   const auth = req.get('authorization') || '';
-  const ok = (process.env.CRON_SECRET && auth === `Bearer ${process.env.CRON_SECRET}`) || req.query.key === adminKey;
+  const ok = (process.env.CRON_SECRET && auth === `Bearer ${process.env.CRON_SECRET}`) || (req.get('x-admin-key') || '') === adminKey;
   if (!ok) return res.status(403).json({ error: 'forbidden' });
   const s = await sync().catch((e) => ({ ok: false, error: e.message }));
   const l = await pollLive().catch((e) => ({ polled: false, error: e.message }));
@@ -348,7 +406,7 @@ if (require.main === module && !ON_VERCEL) {
       const base = `http://localhost:${PORT}`;
       console.log('');
       console.log(`⚽ Pronos Mondial 2026 — ${base}`);
-      console.log(`   Admin : ${base}/?key=${adminKey}`);
+      console.log(`   Admin : ${base}/ (clé API locale : ${adminKey})`);
       for (const p of pools) console.log(`   ${p.name.padEnd(12)} → ${base}/p/${p.token}`);
       console.log('');
     });
