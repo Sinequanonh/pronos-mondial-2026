@@ -311,6 +311,115 @@ table.standings tr.q td { background: color-mix(in srgb, var(--green-soft) 55%, 
 .rules b { color: var(--ink); }
 .rules .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
 
+/* ---------- bannière « Tous derrière les Bleus » ---------- */
+.hero-fr {
+  position: relative; overflow: hidden; border-radius: 20px;
+  margin-top: 14px; padding: 24px 22px 20px;
+  background:
+    radial-gradient(720px 320px at 88% -30%, rgba(37, 99, 235, .55), transparent 65%),
+    radial-gradient(620px 300px at 8% 130%, rgba(30, 58, 138, .65), transparent 60%),
+    linear-gradient(115deg, #b91c1c 0%, #9f1239 32%, #6d28d9 66%, #1d4ed8 100%);
+  border: 1px solid rgba(255, 255, 255, .14);
+  color: #fff;
+}
+.hf-echo {
+  position: absolute; inset: 16px 22px 14px; z-index: 0;
+  display: flex; flex-direction: column; justify-content: space-between;
+  line-height: 1; user-select: none; pointer-events: none; overflow: hidden;
+}
+.hf-echo span {
+  font-weight: 900; text-transform: uppercase; letter-spacing: -.5px; font-style: italic;
+  font-size: clamp(21px, 3.4vw, 40px); white-space: nowrap;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, .25);
+}
+.hf-echo span:nth-child(1) { opacity: .97; }
+.hf-echo span:nth-child(2) { opacity: .34; }
+.hf-echo span:nth-child(3) { opacity: .20; }
+.hf-echo span:nth-child(4) { opacity: .13; }
+.hf-echo span:nth-child(5) { opacity: .09; }
+.hf-echo span:nth-child(6) { opacity: .06; }
+.hf-echo span:nth-child(7) { opacity: .045; }
+.hf-ball {
+  position: absolute; top: 6px; right: 5%; font-size: 124px; line-height: 1; z-index: 1;
+  pointer-events: none; will-change: transform, opacity;
+  filter: drop-shadow(0 20px 44px rgba(29, 78, 216, .7)) drop-shadow(0 6px 16px rgba(185, 28, 28, .55));
+  animation: hfpenalty 8s cubic-bezier(.32, .05, .68, .98) infinite;
+  transform-origin: 50% 50%;
+}
+/* le penalty : le ballon part du point central, loin, et arrive vers toi en tournant */
+@keyframes hfpenalty {
+  0%   { transform: translate(-46vw, 200px) scale(.07) rotate(0deg); opacity: 0; }
+  6%   { opacity: 1; }
+  62%  { transform: translate(-9vw, 36px) scale(.55) rotate(560deg); opacity: 1; }
+  88%  { transform: translate(6px, -6px) scale(1.16) rotate(760deg); opacity: 1; }
+  96%  { transform: translate(14px, -12px) scale(1.24) rotate(790deg); opacity: 1; }
+  100% { transform: translate(18px, -14px) scale(1.26) rotate(800deg); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .hf-ball { animation: none; } .hf-ticker-in { animation: none; } }
+.hf-subflag { width: 21px; height: 14px; object-fit: cover; border-radius: 3px; vertical-align: -2px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .2); }
+.hf-x {
+  position: absolute; top: 10px; right: 12px; z-index: 3;
+  background: rgba(0, 0, 0, .28); color: rgba(255, 255, 255, .85); border: 0;
+  width: 28px; height: 28px; border-radius: 50%; font-size: 12px;
+}
+.hf-x:hover { background: rgba(0, 0, 0, .5); }
+.hf-card {
+  position: relative; z-index: 2; max-width: 600px; margin: clamp(118px, 17vw, 170px) auto 0;
+  background: rgba(15, 13, 20, .78); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, .11); border-radius: 18px;
+  padding: 14px 18px 0; box-shadow: 0 26px 70px rgba(0, 0, 0, .42);
+}
+.hf-card-top {
+  display: flex; justify-content: space-between; gap: 10px;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 2.5px; text-transform: uppercase;
+  color: #fbbf24; padding-bottom: 11px; border-bottom: 1px dashed rgba(255, 255, 255, .22);
+}
+.hf-card-top .hf-brand { color: #34d399; }
+.hf-main { display: flex; align-items: center; gap: 16px; padding: 16px 0 15px; }
+.hf-flag { width: 58px; height: 39px; object-fit: cover; border-radius: 9px; flex: none; box-shadow: 0 6px 22px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 255, 255, .15); }
+.hf-who { min-width: 0; }
+.hf-team { font-size: 30px; font-weight: 900; letter-spacing: -.6px; line-height: 1; }
+.hf-sub { color: rgba(255, 255, 255, .72); font-size: 13.5px; margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hf-count, .hf-live {
+  margin-left: auto; flex: none; text-align: right;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 23px; font-weight: 700; color: #6ee7b7; font-variant-numeric: tabular-nums;
+}
+.hf-live { color: #fff; font-size: 30px; }
+.hf-live span { display: block; font-size: 11.5px; letter-spacing: 1px; color: #fca5a5; font-weight: 800; margin-top: 3px; }
+.hf-ticker { overflow: hidden; margin: 0 -18px; background: rgba(0, 0, 0, .45); border-top: 1px solid rgba(255, 255, 255, .07); border-bottom: 1px solid rgba(255, 255, 255, .07); }
+.hf-ticker-in {
+  white-space: nowrap; display: inline-block; padding: 6px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px; letter-spacing: 2px; color: #34d399;
+  animation: hfscroll 36s linear infinite;
+}
+@keyframes hfscroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.hf-stats { display: flex; align-items: center; gap: 26px; padding: 13px 0 14px; flex-wrap: wrap; }
+.hf-stats label { display: block; font-size: 9.5px; letter-spacing: 2px; color: rgba(255, 255, 255, .55); font-weight: 800; margin-bottom: 2px; }
+.hf-stats b { font-size: 19px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; }
+.hf-open {
+  margin-left: auto; border: 0; cursor: pointer; color: #fff;
+  font-size: 11.5px; font-weight: 800; letter-spacing: 1.5px;
+  background: linear-gradient(90deg, #2563eb, #dc2626); border-radius: 999px; padding: 10px 16px;
+  box-shadow: 0 8px 22px rgba(37, 99, 235, .35);
+}
+.hf-open:hover { filter: brightness(1.1); }
+@media (max-width: 700px) {
+  .hero-fr { padding: 18px 14px 14px; }
+  .hf-echo { inset: 12px 14px 10px; }
+  .hf-ball { font-size: 76px; top: 0; }
+  .hf-card { margin-top: 96px; }
+  .hf-team { font-size: 26px; }
+  .hf-main { flex-wrap: wrap; gap: 12px 14px; }
+  .hf-sub { white-space: normal; }
+  .hf-count, .hf-live { margin-left: 0; width: 100%; text-align: left; font-size: 27px; padding-top: 2px; border-top: 1px dashed rgba(255, 255, 255, .14); }
+  .hf-live { font-size: 30px; }
+  .hf-live span { display: inline; margin-left: 8px; }
+  .hf-stats { gap: 14px 20px; }
+  .hf-open { width: 100%; margin: 4px 0 0; text-align: center; }
+}
+
 /* ---------- bannière pronos express ---------- */
 .banner {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;

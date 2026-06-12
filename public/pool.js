@@ -638,6 +638,79 @@ function closeQP() {
 }
 const qpVisible = () => !$('#qp').classList.contains('hidden');
 
+// ---------- bannière « Tous derrière les Bleus » ----------
+function hfCountdown(d) {
+  let s = Math.max(0, Math.floor((Date.parse(d) - Date.now()) / 1000));
+  const j = Math.floor(s / 86400); s -= j * 86400;
+  const pad = (x) => String(x).padStart(2, '0');
+  return (j > 0 ? `J-${j} · ` : '') + `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`;
+}
+
+function renderFranceHero() {
+  const el = $('#hero-fr');
+  if (!el || !S.data) return;
+  if (localStorage.getItem('pronos26:hero') === 'off') { el.hidden = true; return; }
+
+  const frMatches = S.data.matches.filter((m) => m.home === 'France' || m.away === 'France');
+  const live = frMatches.find((m) => isLive(m));
+  const next = frMatches.filter((m) => !m.finished && !m.locked).sort((a, b) => a.date.localeCompare(b.date))[0];
+  const m = live || next;
+  const fr = team('France');
+
+  let card;
+  if (m) {
+    const oppRaw = m.home === 'France' ? m.away : m.home;
+    const opp = team(oppRaw);
+    const oppLabel = opp ? tNm(opp) : phLabel(m, m.home === 'France' ? 'a' : 'h');
+    const oppFlag = opp ? flagImg(opp.code, 'hf-subflag') + ' ' : '';
+    const stage = m.grp ? t('group', m.grp) : (I18N[LANG].stageShort[m.stage] || '');
+    const picks = S.data.counts[m.id] || 0;
+    const status = live
+      ? `<div class="hf-live">${m.lhs ?? 0}–${m.las ?? 0}<span>🔴 ${esc(m.lmin || 'LIVE')}</span></div>`
+      : `<div class="hf-count" data-hf-date="${m.date}">${hfCountdown(m.date)}</div>`;
+    card = `
+      <div class="hf-card">
+        <div class="hf-card-top"><span>⚽ ${esc(stage)}</span><span class="hf-brand">PRONOS 2026</span></div>
+        <div class="hf-main">
+          ${fr ? flagImg(fr.code, 'hf-flag big') : '🇫🇷'}
+          <div class="hf-who">
+            <div class="hf-team">France</div>
+            <div class="hf-sub">${live
+              ? (LANG === 'fr' ? `contre ${oppFlag}${esc(oppLabel)} — en ce moment` : `vs ${oppFlag}${esc(oppLabel)} — live now`)
+              : `vs ${oppFlag}${esc(oppLabel)} · ${esc(cap1(fmtDay(m.date)))} ${esc(fmtTime(m.date))}`}</div>
+          </div>
+          ${status}
+        </div>
+        <div class="hf-ticker"><div class="hf-ticker-in">${('ALLEZ LES BLEUS&nbsp;&nbsp;🇫🇷&nbsp;&nbsp;FRA-2026&nbsp;&nbsp;E5446327A3F&nbsp;&nbsp;★&nbsp;★&nbsp;&nbsp;').repeat(8)}</div></div>
+        <div class="hf-stats">
+          <div><label>${LANG === 'fr' ? 'PRONOS DÉPOSÉS' : 'PICKS IN'}</label><b>${picks}</b></div>
+          <div><label>${LANG === 'fr' ? 'COUP D\'ENVOI' : 'KICKOFF'}</label><b>${esc(fmtTime(m.date))}</b></div>
+          <div><label>${LANG === 'fr' ? 'CONFIANCE' : 'BELIEF'}</label><b>100%</b></div>
+          <button class="hf-open" data-hf-go>${LANG === 'fr' ? 'FAIRE MON PRONO' : 'MAKE MY PICK'} ↗</button>
+        </div>
+      </div>`;
+  } else {
+    card = `<div class="hf-card"><div class="hf-main">
+      ${fr ? flagImg(fr.code, 'hf-flag big') : '🇫🇷'}
+      <div class="hf-who"><div class="hf-team">Allez les Bleus</div>
+      <div class="hf-sub">${LANG === 'fr' ? 'Quoi qu\'il arrive.' : 'No matter what.'}</div></div>
+    </div></div>`;
+  }
+
+  el.hidden = false;
+  const echo = Array.from({ length: 7 }, () => '<span>TOUS DERRIÈRE LES BLEUS&nbsp;!</span>').join('');
+  el.innerHTML = `
+    <button class="hf-x" data-hf-close title="${LANG === 'fr' ? 'Masquer la bannière' : 'Hide banner'}">✕</button>
+    <div class="hf-echo" aria-hidden="true">${echo}</div>
+    <div class="hf-ball" aria-hidden="true">⚽</div>
+    ${card}`;
+}
+
+setInterval(() => {
+  const c = document.querySelector('[data-hf-date]');
+  if (c) c.textContent = hfCountdown(c.dataset.hfDate);
+}, 1000);
+
 // ---------- rendu global ----------
 function applyStatic() {
   document.documentElement.lang = LANG;
@@ -662,6 +735,7 @@ function applyStatic() {
 
 function render() {
   renderHeader();
+  renderFranceHero();
   renderMatchs();
   renderBracket();
   renderGroups();
@@ -755,6 +829,12 @@ document.addEventListener('click', (e) => {
     if (panel) panel.hidden = !panel.hidden;
     return;
   }
+  if (e.target.closest('[data-hf-close]')) {
+    localStorage.setItem('pronos26:hero', 'off');
+    $('#hero-fr').hidden = true;
+    return;
+  }
+  if (e.target.closest('[data-hf-go]')) { switchView('matchs'); return; }
   if (e.target.id === 'btn-past') { S.showPast = !S.showPast; renderMatchs(); return; }
   if (e.target.id === 'btn-switch') {
     if (confirm(t('confirmSwitch'))) {
