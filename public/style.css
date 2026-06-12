@@ -179,6 +179,16 @@ body[data-view="classement"] #sec-side { display: flex; max-width: 620px; margin
 .mi-side .time { color: var(--ink); font-weight: 600; font-size: 13px; }
 .mi-side .chip { margin-top: 3px; }
 
+.who-btn {
+  border: 1px solid var(--line); background: var(--surf); color: var(--muted);
+  border-radius: 999px; padding: 1px 9px; font-size: 11px; font-weight: 600; cursor: pointer;
+}
+.who-btn:hover { border-color: var(--line2); color: var(--ink); }
+.who-panel { background: var(--surf); border-radius: 0 0 12px 12px; padding: 8px 14px 9px; font-size: 12.5px; display: flex; flex-direction: column; gap: 4px; }
+.who-panel .row.done b { font-weight: 700; }
+.who-panel .row.wait { color: var(--muted); }
+.who-note { color: var(--muted); font-size: 11px; margin-top: 4px; border-top: 1px dashed var(--line); padding-top: 6px; }
+
 .gm-others { background: var(--surf); border-radius: 0 0 12px 12px; padding: 8px 14px 10px 14px; font-size: 12.5px; display: flex; flex-direction: column; gap: 4px; }
 .gm-others .row { display: flex; gap: 10px; align-items: center; }
 .gm-others .row b { min-width: 96px; font-weight: 600; }
@@ -309,14 +319,36 @@ table.standings tr.q td { background: color-mix(in srgb, var(--green-soft) 55%, 
 
 /* ---------- prono champion ---------- */
 .champ-body { padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
-.champ-mine { display: flex; align-items: center; gap: 12px; font-size: 19px; letter-spacing: -.2px; }
-.champ-mine b { font-weight: 800; }
-.champ-select {
-  width: 100%; padding: 11px 12px; font-size: 14.5px; font-weight: 600;
+.champ-dd { position: relative; }
+.champ-dd-btn {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 11px 13px; font-size: 15px; font-weight: 600;
   border: 1.5px solid var(--line2); border-radius: 12px;
   background: var(--bg); color: var(--ink); cursor: pointer;
 }
-.champ-select:focus { outline: none; border-color: var(--blue); }
+.champ-dd-btn:hover { border-color: var(--blue); }
+.champ-dd-btn b { font-weight: 800; }
+.champ-dd-btn .champ-ph { color: var(--muted); font-weight: 500; }
+.champ-dd-btn .chev { margin-left: auto; color: var(--muted); font-size: 12px; }
+.champ-dd-panel {
+  position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; right: 0;
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .28); overflow: hidden;
+}
+.champ-dd-search {
+  width: 100%; border: 0; border-bottom: 1px solid var(--line);
+  padding: 12px 14px; font-size: 14.5px; background: var(--card); color: var(--ink);
+}
+.champ-dd-search:focus { outline: none; }
+.champ-dd-list { max-height: 264px; overflow-y: auto; padding: 6px; }
+.champ-dd-opt {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 9px 10px; border: 0; background: none; border-radius: 10px;
+  font-size: 14px; font-weight: 600; color: var(--ink); cursor: pointer;
+}
+.champ-dd-opt:hover { background: var(--surf); }
+.champ-dd-opt.sel { background: var(--green-soft); }
+.champ-dd-empty { padding: 14px; color: var(--muted); font-size: 13px; text-align: center; }
 .champ-note { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .champ-row { display: flex; align-items: center; gap: 9px; padding: 6px 2px; border-top: 1px solid var(--line); font-size: 13.5px; }
 .champ-row:first-child { border-top: 0; }

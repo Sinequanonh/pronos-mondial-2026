@@ -107,6 +107,10 @@ const I18N = {
     champRight: 'TROUVÉ 🎯',
     champBanner: (d) => `🏆 Choisis ton pays champion avant ${d}`,
     champGo: 'Choisir',
+    champSearch: 'Rechercher un pays…',
+    champNone: 'Aucun pays ne correspond',
+    whoTitle: 'Qui a déjà pronostiqué ?',
+    whoHidden: 'les scores restent secrets jusqu\'au coup d\'envoi',
     mine: 'toi',
     reasons: {
       'match inconnu': 'match inconnu',
@@ -201,6 +205,10 @@ const I18N = {
     champRight: 'NAILED IT 🎯',
     champBanner: (d) => `🏆 Pick your champion before ${d}`,
     champGo: 'Pick now',
+    champSearch: 'Search a country…',
+    champNone: 'No matching country',
+    whoTitle: 'Who has picked already?',
+    whoHidden: 'scores stay secret until kickoff',
     mine: 'you',
     reasons: {
       'match inconnu': 'unknown match',
@@ -356,7 +364,17 @@ function matchItem(m, showStage) {
   const expandable = m.locked && others.length > 0;
 
   const label = showStage ? (m.grp ? t('group', m.grp) : t('stageShort')[m.stage] || I18N[LANG].stageShort[m.stage]) : '';
-  const metaR = !m.locked ? `👥 ${S.data.counts[m.id] || 0}` : expandable ? '▾' : '';
+  const pickersList = (S.data.pickers || {})[m.id] || [];
+  const metaR = !m.locked
+    ? `<button class="who-btn" data-who="${m.id}" title="${t('whoTitle')}">👥 ${S.data.counts[m.id] || 0} ▾</button>`
+    : expandable ? '▾' : '';
+  const whoHtml = !m.locked && S.data.players.length
+    ? `<div class="who-panel" hidden>
+        ${pickersList.map((n) => `<div class="row done">✓ <b>${esc(n)}</b></div>`).join('')}
+        ${S.data.players.filter((p) => !pickersList.includes(p)).map((n) => `<div class="row wait">⏳ ${esc(n)}</div>`).join('')}
+        <div class="who-note">🔒 ${t('whoHidden')}</div>
+      </div>`
+    : '';
   const teamRow = (side) => {
     const tm = side === 'h' ? th : ta;
     const raw = side === 'h' ? m.home : m.away;
@@ -381,7 +399,7 @@ function matchItem(m, showStage) {
         ${mineLine}
       </div>
       <div class="mi-side">${miSide(m)}</div>
-    </div>${othersHtml}</div>`;
+    </div>${whoHtml}${othersHtml}</div>`;
 }
 
 // ---------- vue Matchs (chronologique) ----------
@@ -555,15 +573,21 @@ function renderChampion() {
   if (!c.locked) {
     if (S.data.me) {
       const opts = Object.entries(S.data.teams)
-        .map(([key, tm]) => ({ key, label: tNm(tm) }))
+        .map(([key, tm]) => ({ key, label: tNm(tm), code: tm.code }))
         .sort((a, b) => a.label.localeCompare(b.label, LANG));
-      html += mineTeam
-        ? `<div class="champ-mine">${flagImg(mineTeam.code, 'fl big')}<b>${esc(tNm(mineTeam))}</b></div>`
-        : '';
-      html += `<select id="champ-select" class="champ-select">
-          <option value="" disabled ${c.mine ? '' : 'selected'}>${t('champPlaceholder')}</option>
-          ${opts.map((o) => `<option value="${esc(o.key)}" ${o.key === c.mine ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
-        </select>`;
+      const btnContent = mineTeam
+        ? `${flagImg(mineTeam.code)} <b>${esc(tNm(mineTeam))}</b>`
+        : `<span class="champ-ph">${t('champPlaceholder')}</span>`;
+      html += `<div class="champ-dd">
+          <button class="champ-dd-btn" data-champ-dd>${btnContent}<span class="chev">▾</span></button>
+          <div class="champ-dd-panel" hidden>
+            <input class="champ-dd-search" placeholder="${t('champSearch')}" autocomplete="off">
+            <div class="champ-dd-list">
+              ${opts.map((o) => `<button class="champ-dd-opt ${o.key === c.mine ? 'sel' : ''}" data-champ-team="${esc(o.key)}" data-label="${esc(o.label)}">${flagImg(o.code)} <span>${esc(o.label)}</span></button>`).join('')}
+            </div>
+            <div class="champ-dd-empty" hidden>${t('champNone')}</div>
+          </div>
+        </div>`;
     } else {
       html += `<div class="champ-note">${t('champJoinFirst')}</div>`;
     }
@@ -587,9 +611,7 @@ function renderChampion() {
   $('#champ-body').innerHTML = html;
 }
 
-document.addEventListener('change', async (e) => {
-  if (e.target.id !== 'champ-select') return;
-  const teamKey = e.target.value;
+async function saveChampion(teamKey) {
   try {
     const hadPick = !!S.data.champion.mine;
     const res = await api('PUT', `/api/pool/${encodeURIComponent(TOKEN)}/champion`, { team: teamKey });
@@ -604,6 +626,25 @@ document.addEventListener('change', async (e) => {
   } catch {
     toast(t('offline'), true);
   }
+}
+
+const normTxt = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+document.addEventListener('input', (e) => {
+  if (!e.target.classList || !e.target.classList.contains('champ-dd-search')) return;
+  const panel = e.target.closest('.champ-dd-panel');
+  const q = normTxt(e.target.value.trim());
+  let shown = 0;
+  panel.querySelectorAll('.champ-dd-opt').forEach((o) => {
+    const hit = !q || normTxt(o.dataset.label).includes(q);
+    o.hidden = !hit;
+    if (hit) shown += 1;
+  });
+  panel.querySelector('.champ-dd-empty').hidden = shown > 0;
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') document.querySelectorAll('.champ-dd-panel:not([hidden])').forEach((p) => { p.hidden = true; });
 });
 
 // ---------- classement joueurs ----------
@@ -929,6 +970,31 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('click', (e) => {
+  // ferme les dropdowns champion ouverts si on clique ailleurs
+  if (!e.target.closest('.champ-dd')) {
+    document.querySelectorAll('.champ-dd-panel:not([hidden])').forEach((p) => { p.hidden = true; });
+  }
+  const ddBtn = e.target.closest('[data-champ-dd]');
+  if (ddBtn) {
+    const panel = ddBtn.parentElement.querySelector('.champ-dd-panel');
+    panel.hidden = !panel.hidden;
+    if (!panel.hidden) {
+      const s = panel.querySelector('.champ-dd-search');
+      s.value = '';
+      panel.querySelectorAll('.champ-dd-opt').forEach((o) => { o.hidden = false; });
+      panel.querySelector('.champ-dd-empty').hidden = true;
+      setTimeout(() => s.focus(), 30);
+    }
+    return;
+  }
+  const ddOpt = e.target.closest('[data-champ-team]');
+  if (ddOpt) { saveChampion(ddOpt.dataset.champTeam); return; }
+  const whoBtn = e.target.closest('[data-who]');
+  if (whoBtn) {
+    const panel = whoBtn.closest('.mi-wrap')?.querySelector('.who-panel');
+    if (panel) panel.hidden = !panel.hidden;
+    return;
+  }
   const tabBtn = e.target.closest('[data-view-btn]');
   if (tabBtn) { switchView(tabBtn.dataset.viewBtn); return; }
   const mi = e.target.closest('.mi.lk');

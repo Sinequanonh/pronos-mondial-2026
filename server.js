@@ -179,10 +179,12 @@ app.get('/api/pool/:token', ah(async (req, res) => {
   const mine = {};
   const others = {};
   const counts = {};
+  const pickers = {}; // qui a déjà pronostiqué (noms seulement, jamais les scores) — matchs non verrouillés
   for (const pr of allPreds) {
     const m = matchById.get(pr.match_id);
     if (!m) continue;
     counts[pr.match_id] = (counts[pr.match_id] || 0) + 1;
+    if (!m.locked) (pickers[pr.match_id] = pickers[pr.match_id] || []).push(pr.player_name);
     if (me && pr.player_id === me.id) mine[pr.match_id] = [pr.home, pr.away];
     if (m.locked) {
       (others[pr.match_id] = others[pr.match_id] || []).push({
@@ -221,6 +223,7 @@ app.get('/api/pool/:token', ah(async (req, res) => {
     mine,
     others,
     counts,
+    pickers: Object.fromEntries(Object.entries(pickers).map(([k, v]) => [k, v.sort((a, b) => a.localeCompare(b, 'fr'))])),
     leaderboard: (await leaderboard(pool.id)).map((r) => ({ ...r, isMe: !!me && r.id === me.id })),
     lastSync: await getMeta('last_sync'),
     serverNow: new Date().toISOString(),
