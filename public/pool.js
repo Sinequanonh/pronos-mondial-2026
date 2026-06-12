@@ -109,6 +109,8 @@ const I18N = {
     champGo: 'Choisir',
     champSearch: 'Rechercher un pays…',
     champNone: 'Aucun pays ne correspond',
+    champPoints: (p) => `🎁 <b>+${p} pts</b> au classement si tu trouves le champion`,
+    ruleChamp: (p) => `<b>+${p} pts</b> — champion du monde deviné 🏆`,
     whoTitle: 'Qui a déjà pronostiqué ?',
     whoHidden: 'les scores restent secrets jusqu\'au coup d\'envoi',
     mine: 'toi',
@@ -207,6 +209,8 @@ const I18N = {
     champGo: 'Pick now',
     champSearch: 'Search a country…',
     champNone: 'No matching country',
+    champPoints: (p) => `🎁 <b>+${p} pts</b> on the leaderboard if you nail the champion`,
+    ruleChamp: (p) => `<b>+${p} pts</b> — world champion guessed 🏆`,
     whoTitle: 'Who has picked already?',
     whoHidden: 'scores stay secret until kickoff',
     mine: 'you',
@@ -591,7 +595,8 @@ function renderChampion() {
     } else {
       html += `<div class="champ-note">${t('champJoinFirst')}</div>`;
     }
-    html += `<div class="champ-note">⏳ ${t('champDeadline', cap1(fmtDay(dd)), fmtTime(dd))}</div>
+    html += `<div class="champ-note">${t('champPoints', c.points || 10)}</div>
+             <div class="champ-note">⏳ ${t('champDeadline', cap1(fmtDay(dd)), fmtTime(dd))}</div>
              <div class="champ-note">${t('champHidden', c.count)}</div>`;
   } else {
     const byName = new Map((c.picks || []).map((p) => [p.name, p.team]));
@@ -658,7 +663,7 @@ function renderBoard() {
   $('#board').innerHTML = lb.map((r, i) => `
     <div class="board-row ${r.isMe ? 'me' : ''}">
       <span class="rk">${i === 0 && r.pts > 0 ? '👑' : i + 1}</span>
-      <span class="nm">${esc(r.name)}<small>${t('exactSub', r.exact, r.outcome)}</small></span>
+      <span class="nm">${esc(r.name)}<small>${t('exactSub', r.exact, r.outcome)}${r.champ ? ` · 🏆 +${(S.data.champion && S.data.champion.points) || 10}` : ''}</small></span>
       <span class="pt">${r.pts}<small> pt${r.pts > 1 ? 's' : ''}</small></span>
     </div>`).join('');
 }
@@ -672,6 +677,7 @@ function renderRules() {
     <span class="dot" style="background:#137333"></span>${t('rule3')}<br>
     <span class="dot" style="background:#e8710a"></span>${t('rule1')}<br>
     <span class="dot" style="background:#80868b"></span>${t('rule0')}<br>
+    <span class="dot" style="background:#fbbf24"></span>${t('ruleChamp', (S.data.champion && S.data.champion.points) || 10)}<br>
     ${t('ruleKo')}<br><br>
     ${S.data.me ? t('myCount', mineCount, open) + '<br>' : ''}
     <span style="opacity:.75">${t('syncInfo', sync)}</span>`;

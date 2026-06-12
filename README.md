@@ -32,7 +32,9 @@ Au démarrage, le serveur affiche :
   sont connues). Sauvegarde automatique. Verrouillage au coup d'envoi. Les pronos des
   autres ne sont visibles qu'une fois le match commencé (clic sur un match verrouillé).
 - **Barème** — score exact **3 pts** · bon résultat **1 pt** (en élimination directe :
-  bonne équipe qualifiée) · sinon 0.
+  bonne équipe qualifiée) · sinon 0 · champion du monde deviné **+10 pts**
+  (prono champion, verrouillé le 14/06 à minuit ; valeurs ajustables via
+  `CHAMPION_POINTS` et `CHAMPION_DEADLINE`).
 - **Pronos express** — à l'ouverture (au plus une fois toutes les 12 h), une modale
   propose de pronostiquer les matchs des prochaines 24 h qui n'ont pas encore de prono ;
   une bannière permanente permet de la rouvrir tant qu'il en reste.

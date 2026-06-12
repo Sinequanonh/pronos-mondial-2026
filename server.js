@@ -5,7 +5,7 @@ const express = require('express');
 const { all, get, run, batch, initDb, getMeta, setMeta, DATA_DIR, ON_VERCEL } = require('./lib/db');
 const { sync, SOURCES } = require('./lib/sync');
 const { pollLive } = require('./lib/live');
-const { pointsFor, leaderboard } = require('./lib/scoring');
+const { pointsFor, leaderboard, CHAMPION_POINTS } = require('./lib/scoring');
 const { TEAMS } = require('./lib/teams');
 
 const PORT = process.env.PORT || 3026;
@@ -203,6 +203,7 @@ app.get('/api/pool/:token', ah(async (req, res) => {
   `, [pool.id]);
   const champion = {
     deadline: CHAMPION_DEADLINE,
+    points: CHAMPION_POINTS,
     locked: championLocked(),
     mine: me ? ((champRows.find((r) => r.pid === me.id) || {}).team || null) : null,
     count: champRows.length,
