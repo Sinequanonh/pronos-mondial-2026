@@ -95,6 +95,18 @@ const I18N = {
     qpClose: 'Fermer',
     qpBanner: (n) => `⚡ ${n} match${n > 1 ? 's' : ''} dans les prochaines 24 h sans prono`,
     qpGo: 'Pronostiquer',
+    champH2: '🏆 Prono champion',
+    champSub: 'qui soulève la Coupe le 19 juillet ?',
+    champDeadline: (d, t2) => `modifiable jusqu'à ${d} · ${t2}`,
+    champLockedSub: 'verrouillé — les pronos sont publics',
+    champPlaceholder: 'Choisis ton pays…',
+    champHidden: (n) => `${n} joueur${n > 1 ? 's ont' : ' a'} déjà choisi — pronos cachés jusqu'au verrouillage 🔒`,
+    champSaved: (t2) => `🏆 Champion enregistré : ${t2}`,
+    champJoinFirst: 'Inscris-toi (bouton « Participer ») pour miser sur ton champion.',
+    champNoPick: 'pas de prono',
+    champRight: 'TROUVÉ 🎯',
+    champBanner: (d) => `🏆 Choisis ton pays champion avant ${d}`,
+    champGo: 'Choisir',
     mine: 'toi',
     reasons: {
       'match inconnu': 'match inconnu',
@@ -104,6 +116,8 @@ const I18N = {
       'pas de nul en élimination directe': 'pas de nul en élimination directe',
       'Pseudo entre 2 et 20 caractères': 'Pseudo entre 2 et 20 caractères',
       'PIN : 3 à 6 chiffres': 'PIN : 3 à 6 chiffres',
+      'prono champion verrouillé': 'prono champion verrouillé',
+      'équipe inconnue': 'équipe inconnue',
     },
   },
   en: {
@@ -175,6 +189,18 @@ const I18N = {
     qpClose: 'Done',
     qpBanner: (n) => `⚡ ${n} match${n > 1 ? 'es' : ''} in the next 24 h without a pick`,
     qpGo: 'Make picks',
+    champH2: '🏆 Champion pick',
+    champSub: 'who lifts the trophy on July 19?',
+    champDeadline: (d, t2) => `editable until ${d} · ${t2}`,
+    champLockedSub: 'locked — everyone\'s picks are public',
+    champPlaceholder: 'Pick your country…',
+    champHidden: (n) => `${n} player${n > 1 ? 's have' : ' has'} picked — hidden until lock 🔒`,
+    champSaved: (t2) => `🏆 Champion saved: ${t2}`,
+    champJoinFirst: 'Join the pool ("Join in") to place your champion pick.',
+    champNoPick: 'no pick',
+    champRight: 'NAILED IT 🎯',
+    champBanner: (d) => `🏆 Pick your champion before ${d}`,
+    champGo: 'Pick now',
     mine: 'you',
     reasons: {
       'match inconnu': 'unknown match',
@@ -184,6 +210,8 @@ const I18N = {
       'pas de nul en élimination directe': 'no draws in knockout games',
       'Pseudo entre 2 et 20 caractères': 'Nickname must be 2–20 characters',
       'PIN : 3 à 6 chiffres': 'PIN: 3–6 digits',
+      'prono champion verrouillé': 'champion pick is locked',
+      'équipe inconnue': 'unknown team',
     },
   },
 };
@@ -510,6 +538,74 @@ function renderGroups() {
   }).join('');
 }
 
+// ---------- prono champion ----------
+const champDisplayDate = () => new Date(Date.parse(S.data.champion.deadline) - 60000); // affiche 23:59 plutôt que 00:00
+function renderChampion() {
+  const c = S.data && S.data.champion;
+  if (!c) { $('#sec-champ').style.display = 'none'; return; }
+  $('#sec-champ').style.display = '';
+  const dd = champDisplayDate();
+  $('#champ-sub').textContent = c.locked ? t('champLockedSub') : t('champSub');
+
+  const mineTeam = c.mine ? team(c.mine) : null;
+  const final = M(104);
+  const actual = final ? actualAdvancer(final) : null;
+
+  let html = '';
+  if (!c.locked) {
+    if (S.data.me) {
+      const opts = Object.entries(S.data.teams)
+        .map(([key, tm]) => ({ key, label: tNm(tm) }))
+        .sort((a, b) => a.label.localeCompare(b.label, LANG));
+      html += mineTeam
+        ? `<div class="champ-mine">${flagImg(mineTeam.code, 'fl big')}<b>${esc(tNm(mineTeam))}</b></div>`
+        : '';
+      html += `<select id="champ-select" class="champ-select">
+          <option value="" disabled ${c.mine ? '' : 'selected'}>${t('champPlaceholder')}</option>
+          ${opts.map((o) => `<option value="${esc(o.key)}" ${o.key === c.mine ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
+        </select>`;
+    } else {
+      html += `<div class="champ-note">${t('champJoinFirst')}</div>`;
+    }
+    html += `<div class="champ-note">⏳ ${t('champDeadline', cap1(fmtDay(dd)), fmtTime(dd))}</div>
+             <div class="champ-note">${t('champHidden', c.count)}</div>`;
+  } else {
+    const byName = new Map((c.picks || []).map((p) => [p.name, p.team]));
+    const rows = S.data.players.map((name) => {
+      const tk = byName.get(name);
+      const tm = tk ? team(tk) : null;
+      const hit = actual && tk === actual;
+      return `<div class="champ-row ${hit ? 'hit' : ''}">
+        ${tm ? flagImg(tm.code) : '<span class="fl ph">–</span>'}
+        <span class="champ-team">${tm ? esc(tNm(tm)) : `<i>${t('champNoPick')}</i>`}</span>
+        <span class="champ-player">${esc(name)}</span>
+        ${hit ? `<span class="chip c3">${t('champRight')}</span>` : ''}
+      </div>`;
+    }).join('');
+    html = rows || `<div class="champ-note">${t('champNoPick')}</div>`;
+  }
+  $('#champ-body').innerHTML = html;
+}
+
+document.addEventListener('change', async (e) => {
+  if (e.target.id !== 'champ-select') return;
+  const teamKey = e.target.value;
+  try {
+    const hadPick = !!S.data.champion.mine;
+    const res = await api('PUT', `/api/pool/${encodeURIComponent(TOKEN)}/champion`, { team: teamKey });
+    const j = await res.json();
+    if (!res.ok) { toast(`⚠️ ${trReason(j.error)}`, true); return; }
+    S.data.champion.mine = j.team;
+    if (!hadPick) S.data.champion.count += 1;
+    const tm = team(j.team);
+    toast(t('champSaved', tm ? tNm(tm) : j.team));
+    renderChampion();
+    renderBanner();
+  } catch {
+    toast(t('offline'), true);
+  }
+});
+
 // ---------- classement joueurs ----------
 function renderBoard() {
   const lb = S.data.leaderboard;
@@ -599,12 +695,22 @@ function qpMatches() {
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 function renderBanner() {
-  const n = S.data.me ? qpMatches().length : 0;
   const b = $('#qp-banner');
-  b.classList.toggle('hidden', n === 0);
-  if (n) {
-    $('#qp-banner-txt').textContent = t('qpBanner', n);
+  if (!S.data.me) { b.classList.add('hidden'); return; }
+  const n = qpMatches().length;
+  const c = S.data.champion;
+  const needChamp = c && !c.locked && !c.mine;
+  if (n === 0 && !needChamp) { b.classList.add('hidden'); return; }
+  b.classList.remove('hidden');
+  if (n > 0) {
+    $('#qp-banner-txt').textContent = t('qpBanner', n) + (needChamp ? '  ·  🏆' : '');
     $('#qp-go').textContent = t('qpGo');
+    $('#qp-go').dataset.bannerAction = 'qp';
+  } else {
+    const dd = champDisplayDate();
+    $('#qp-banner-txt').textContent = t('champBanner', `${fmtDay(dd)} ${fmtTime(dd)}`);
+    $('#qp-go').textContent = t('champGo');
+    $('#qp-go').dataset.bannerAction = 'champ';
   }
 }
 function qpRow(m) {
@@ -720,6 +826,7 @@ function applyStatic() {
   $('#t-bracket-h2').textContent = t('bracketH2');
   $('#t-bracket-sub').textContent = t('bracketSub');
   $('#t-board-h2').textContent = t('boardH2');
+  $('#t-champ-h2').textContent = t('champH2');
   $('#t-groups-h2').textContent = t('groupsH2');
   $('#t-groups-sub').textContent = t('groupsSub');
   $('#t-join-p').textContent = t('joinP');
@@ -739,6 +846,7 @@ function render() {
   renderMatchs();
   renderBracket();
   renderGroups();
+  renderChampion();
   renderBoard();
   renderRules();
   renderBanner();
@@ -844,7 +952,15 @@ document.addEventListener('click', (e) => {
     }
   }
   if (e.target.id === 'btn-join2') openJoin();
-  if (e.target.id === 'qp-go') openQP();
+  if (e.target.id === 'qp-go') {
+    if (e.target.dataset.bannerAction === 'champ') {
+      if (document.body.dataset.view !== 'apercu') switchView('classement');
+      document.querySelector('#sec-champ')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      openQP();
+    }
+    return;
+  }
   if (e.target.id === 'qp-close') closeQP();
 });
 

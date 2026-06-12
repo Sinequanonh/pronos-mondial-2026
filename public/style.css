@@ -307,6 +307,25 @@ table.standings tr.q td { background: color-mix(in srgb, var(--green-soft) 55%, 
 .board-row.me { background: var(--green-soft); }
 .empty { color: var(--muted); font-size: 13px; padding: 10px 14px 14px; }
 
+/* ---------- prono champion ---------- */
+.champ-body { padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
+.champ-mine { display: flex; align-items: center; gap: 12px; font-size: 19px; letter-spacing: -.2px; }
+.champ-mine b { font-weight: 800; }
+.champ-select {
+  width: 100%; padding: 11px 12px; font-size: 14.5px; font-weight: 600;
+  border: 1.5px solid var(--line2); border-radius: 12px;
+  background: var(--bg); color: var(--ink); cursor: pointer;
+}
+.champ-select:focus { outline: none; border-color: var(--blue); }
+.champ-note { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.champ-row { display: flex; align-items: center; gap: 9px; padding: 6px 2px; border-top: 1px solid var(--line); font-size: 13.5px; }
+.champ-row:first-child { border-top: 0; }
+.champ-row .champ-team { font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.champ-row .champ-team i { color: var(--muted); font-weight: 400; }
+.champ-row .champ-player { margin-left: auto; color: var(--muted); flex: none; }
+.champ-row.hit { background: var(--green-soft); border-radius: 10px; padding-left: 8px; padding-right: 8px; }
+.champ-row.hit .champ-player { color: var(--ink); font-weight: 700; }
+
 .rules { color: var(--muted); font-size: 12.5px; padding: 14px 16px 16px; line-height: 1.65; }
 .rules b { color: var(--ink); }
 .rules .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }

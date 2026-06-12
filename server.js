@@ -10,6 +10,9 @@ const { TEAMS } = require('./lib/teams');
 
 const PORT = process.env.PORT || 3026;
 const SYNC_EVERY_MS = 30 * 60 * 1000;
+// Prono champion : verrouillage dimanche 14 juin 2026 à minuit (heure de Paris)
+const CHAMPION_DEADLINE = process.env.CHAMPION_DEADLINE || '2026-06-14T22:00:00Z';
+const championLocked = () => Date.now() >= Date.parse(CHAMPION_DEADLINE);
 
 const token = () => crypto.randomBytes(8).toString('base64url');
 const hashPin = (pin) => crypto.createHash('sha256').update(String(pin)).digest('hex');
@@ -191,8 +194,25 @@ app.get('/api/pool/:token', ah(async (req, res) => {
     }
   }
 
+  const champRows = await all(`
+    SELECT cp.team, pl.id AS pid, pl.name
+    FROM champion_picks cp JOIN players pl ON pl.id = cp.player_id
+    WHERE pl.pool_id = ?
+  `, [pool.id]);
+  const champion = {
+    deadline: CHAMPION_DEADLINE,
+    locked: championLocked(),
+    mine: me ? ((champRows.find((r) => r.pid === me.id) || {}).team || null) : null,
+    count: champRows.length,
+    // les pronos des autres ne sortent du serveur qu'une fois le verrou tombé
+    picks: championLocked()
+      ? champRows.map((r) => ({ name: r.name, team: r.team })).sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+      : null,
+  };
+
   res.json({
     pool: { name: pool.name, lang: pool.lang || 'fr' },
+    champion,
     me,
     players: (await all('SELECT name FROM players WHERE pool_id = ? ORDER BY name', [pool.id])).map((p) => p.name),
     teams: TEAMS,
@@ -340,6 +360,21 @@ app.get('/api/auth/callback', ah(async (req, res) => {
     cookie('admin_session', makeSession(ADMIN_EMAIL), SESSION_DAYS * 86400),
   ]);
   res.redirect('/');
+}));
+
+app.put('/api/pool/:token/champion', ah(async (req, res) => {
+  const pool = await get('SELECT * FROM pools WHERE token = ?', [req.params.token]);
+  if (!pool) return res.status(404).json({ error: 'Pool introuvable' });
+  const player = await get('SELECT * FROM players WHERE key = ?', [req.get('x-player-key') || '']);
+  if (!player || player.pool_id !== pool.id) return res.status(401).json({ error: 'Reconnecte-toi (pseudo)' });
+  if (championLocked()) return res.status(400).json({ error: 'prono champion verrouillé' });
+  const team = String(req.body.team || '');
+  if (!TEAMS[team]) return res.status(400).json({ error: 'équipe inconnue' });
+  await run(`
+    INSERT INTO champion_picks (player_id, team, updated_at) VALUES (?, ?, datetime('now'))
+    ON CONFLICT(player_id) DO UPDATE SET team = excluded.team, updated_at = excluded.updated_at
+  `, [player.id, team]);
+  res.json({ ok: true, team });
 }));
 
 // ---------- API admin ----------
