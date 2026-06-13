@@ -2,6 +2,8 @@
 const TOKEN = decodeURIComponent(location.pathname.split('/').pop());
 const LSKEY = 'pronos26:' + TOKEN;
 const QPKEY = 'pronos26:qp:' + TOKEN;
+const PENDING_KEY = 'pronos26:pending:' + TOKEN; // miroir local des pronos non encore confirmés
+const SAVE_DEBOUNCE = 650;
 const VIEWS = ['apercu', 'matchs', 'arbre', 'groupes', 'classement'];
 
 const S = {
@@ -10,6 +12,10 @@ const S = {
   dirty: new Map(),   // matchId -> [h, a] en attente d'envoi
   viewOnly: false,
   saveTimer: null,
+  retryTimer: null,
+  saving: false,      // un PUT est en vol (single-flight)
+  retry: 0,           // compteur de backoff
+  lastInput: 0,       // horodatage de la dernière frappe (anti-clobber du poll)
   showPast: false,
   bktCentered: false,
   view: (() => {
@@ -113,6 +119,10 @@ const I18N = {
     ruleChamp: (p) => `<b>+${p} pts</b> — champion du monde deviné 🏆`,
     whoTitle: 'Qui a déjà pronostiqué ?',
     whoHidden: 'les scores restent secrets jusqu\'au coup d\'envoi',
+    savPending: '✎ Modification…',
+    savSaving: '⏳ Enregistrement…',
+    savSaved: '✓ Enregistré',
+    savError: '⚠︎ Non enregistré — nouvel essai…',
     mine: 'toi',
     reasons: {
       'match inconnu': 'match inconnu',
@@ -213,6 +223,10 @@ const I18N = {
     ruleChamp: (p) => `<b>+${p} pts</b> — world champion guessed 🏆`,
     whoTitle: 'Who has picked already?',
     whoHidden: 'scores stay secret until kickoff',
+    savPending: '✎ Editing…',
+    savSaving: '⏳ Saving…',
+    savSaved: '✓ Saved',
+    savError: '⚠︎ Not saved — retrying…',
     mine: 'you',
     reasons: {
       'match inconnu': 'unknown match',
@@ -786,6 +800,7 @@ function openQP() {
   if (first) setTimeout(() => first.focus(), 60);
 }
 function closeQP() {
+  flushSave(false); // sauvegarde immédiate de ce qui vient d'être tapé dans la modale
   $('#qp').classList.add('hidden');
   render();
 }
@@ -901,11 +916,13 @@ function render() {
 }
 
 // ---------- réseau ----------
-async function api(method, url, body) {
+async function api(method, url, body, opts = {}) {
   return fetch(url, {
     method,
     headers: { 'content-type': 'application/json', ...(S.key ? { 'x-player-key': S.key } : {}) },
     body: body ? JSON.stringify(body) : undefined,
+    keepalive: opts.keepalive || false, // survit au backgrounding / fermeture de l'onglet (mobile)
+    signal: opts.signal,
   });
 }
 
@@ -922,38 +939,103 @@ async function fetchData() {
   MATCHES = new Map(json.matches.map((m) => [m.id, m]));
 }
 
-// ---------- sauvegarde ----------
-function scheduleSave() {
-  clearTimeout(S.saveTimer);
-  S.saveTimer = setTimeout(save, 900);
+// ---------- sauvegarde (robuste, mobile-safe) ----------
+// Miroir local des pronos non confirmés : survit à la fermeture/éviction de l'onglet.
+function persistPending() {
+  try {
+    if (S.dirty.size) localStorage.setItem(PENDING_KEY, JSON.stringify([...S.dirty]));
+    else localStorage.removeItem(PENDING_KEY);
+  } catch { /* quota / mode privé : on continue */ }
 }
 
-async function save() {
-  if (!S.dirty.size || !S.key) return;
-  const picks = [...S.dirty].map(([m, [h, a]]) => ({ m, h, a }));
+let savePillTimer = null;
+function setSaveStatus(state) {
+  const el = $('#savepill');
+  if (!el) return;
+  clearTimeout(savePillTimer);
+  if (state === 'pending' || state === 'saving') {
+    el.className = 'savepill'; el.textContent = state === 'saving' ? t('savSaving') : t('savPending'); el.hidden = false;
+  } else if (state === 'error') {
+    el.className = 'savepill err'; el.textContent = t('savError'); el.hidden = false;
+  } else if (state === 'saved') {
+    el.className = 'savepill ok'; el.textContent = t('savSaved'); el.hidden = false;
+    savePillTimer = setTimeout(() => { if (!S.dirty.size && !S.saving) el.hidden = true; }, 1600);
+  } else {
+    el.hidden = true;
+  }
+}
+
+function scheduleSave() {
+  clearTimeout(S.saveTimer);
+  clearTimeout(S.retryTimer);
+  S.saveTimer = setTimeout(() => save(), SAVE_DEBOUNCE);
+}
+
+// opts.keepalive : flush de dernière seconde (page qui passe en arrière-plan) — bypasse le single-flight,
+// l'UPSERT serveur étant idempotent un éventuel doublon est sans effet.
+async function save(opts = {}) {
+  if (!S.key || !S.dirty.size) return;
+  if (S.saving && !opts.keepalive) return; // un PUT est déjà en vol ; le finally relancera les survivants
+  clearTimeout(S.saveTimer);
+  if (!opts.keepalive) { S.saving = true; setSaveStatus('saving'); }
+
+  const snap = [...S.dirty].map(([m, [h, a]]) => ({ m, h, a }));
+  let ctrl = null, to = null;
+  if (!opts.keepalive) { ctrl = new AbortController(); to = setTimeout(() => ctrl.abort(), 12000); }
+
   try {
-    const res = await api('PUT', `/api/pool/${encodeURIComponent(TOKEN)}/predictions`, { picks });
-    if (res.status === 401) { toast(t('sessionLost'), true); openJoin(); return; }
+    const res = await api('PUT', `/api/pool/${encodeURIComponent(TOKEN)}/predictions`,
+      { picks: snap }, { keepalive: opts.keepalive, signal: ctrl ? ctrl.signal : undefined });
+    if (res.status === 401) { S.saving = false; toast(t('sessionLost'), true); openJoin(); return; }
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const j = await res.json();
     const rejected = new Set((j.rejected || []).map((r) => Number(r.m)));
-    for (const p of picks) {
-      if (rejected.has(p.m)) continue;
-      S.data.mine[p.m] = [p.h, p.a];
-      const st = document.getElementById('qp-st-' + p.m);
-      if (st) st.textContent = '✓';
+    for (const p of snap) {
+      if (!rejected.has(p.m)) {
+        S.data.mine[p.m] = [p.h, p.a];
+        const st = document.getElementById('qp-st-' + p.m);
+        if (st) st.textContent = '✓';
+      }
+      // On ne RETIRE de dirty que si la valeur n'a pas changé depuis l'envoi : une frappe
+      // arrivée pendant le PUT survit et sera renvoyée. Les rejets sont permanents (match commencé,
+      // score invalide…) → on les retire aussi, sinon boucle de retry infinie.
+      const cur = S.dirty.get(p.m);
+      if (cur && cur[0] === p.h && cur[1] === p.a) S.dirty.delete(p.m);
     }
-    S.dirty.clear();
+    persistPending();
+    S.retry = 0;
     if (j.saved > 0) toast(t('saved', j.saved));
     if (j.rejected && j.rejected.length) toast(`⚠️ ${trReason(j.rejected[0].reason)}`, true);
     renderRules();
     renderBanner();
-    // resynchronise les inputs des sections où l'on n'est pas en train de taper
+    // resynchronise les inputs des sections où l'on n'est PAS en train de taper
     const ae = document.activeElement;
-    if (!ae || !ae.closest || !ae.closest('#sec-matchs')) renderMatchs();
-    if (!ae || !ae.closest || !ae.closest('#sec-groups')) renderGroups();
+    const inSec = (sel) => ae && ae.closest && ae.closest(sel);
+    if (!inSec('#sec-matchs')) renderMatchs();
+    if (!inSec('#sec-groups')) renderGroups();
   } catch {
-    toast(t('offline'), true);
+    if (!opts.keepalive) {
+      setSaveStatus('error');
+      toast(t('offline'), true);
+      clearTimeout(S.retryTimer);
+      S.retryTimer = setTimeout(() => save(), Math.min(20000, 800 * 2 ** S.retry) + Math.floor(Math.random() * 400));
+      S.retry += 1;
+    }
+  } finally {
+    if (to) clearTimeout(to);
+    if (!opts.keepalive) {
+      S.saving = false;
+      if (S.dirty.size) scheduleSave();      // survivants (frappés pendant l'envoi) → un seul nouveau passage
+      else setSaveStatus('saved');
+    }
   }
+}
+
+// flush immédiat (blur d'un champ, fermeture de modale, passage en arrière-plan)
+function flushSave(keepalive) {
+  if (!S.dirty.size || !S.key) return;
+  clearTimeout(S.saveTimer);
+  save({ keepalive });
 }
 
 document.addEventListener('input', (e) => {
@@ -965,15 +1047,27 @@ document.addEventListener('input', (e) => {
   const hEl = box.querySelector('input.bi[data-s="h"]');
   const aEl = box.querySelector('input.bi[data-s="a"]');
   if (!hEl || !aEl || !m) return;
+  S.lastInput = Date.now();
   const h = hEl.value === '' ? null : Number(hEl.value);
   const a = aEl.value === '' ? null : Number(aEl.value);
   const valid = Number.isInteger(h) && Number.isInteger(a) && h >= 0 && a >= 0 && h <= 30 && a <= 30;
   const koDraw = valid && m.stage !== 'group' && h === a;
   [hEl, aEl].forEach((x) => x.classList.toggle('bad', koDraw));
-  if (koDraw) { toast(t('noDraw'), true); return; }
-  if (valid) { S.dirty.set(mid, [h, a]); scheduleSave(); }
-  else S.dirty.delete(mid);
+  if (koDraw) { S.dirty.delete(mid); persistPending(); toast(t('noDraw'), true); return; }
+  if (valid) { S.dirty.set(mid, [h, a]); persistPending(); setSaveStatus('pending'); scheduleSave(); }
+  else { S.dirty.delete(mid); persistPending(); }
 });
+
+// flush quand on quitte un champ de score (clavier refermé, champ suivant)
+document.addEventListener('blur', (e) => {
+  if (e.target.classList && e.target.classList.contains('bi')) flushSave(false);
+}, true);
+
+// flush de dernière seconde quand l'onglet passe en arrière-plan / se ferme (mobile : appli changée,
+// écran verrouillé…). keepalive:true pour que la requête parte malgré le gel de la page.
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushSave(true); });
+window.addEventListener('pagehide', () => flushSave(true));
+window.addEventListener('online', () => { if (S.dirty.size) save(); });
 
 document.addEventListener('click', (e) => {
   // ferme les dropdowns champion ouverts si on clique ailleurs
@@ -1076,6 +1170,7 @@ $('#join-form').addEventListener('submit', async (e) => {
     toast(j.rejoined ? t('welcomeBack', j.name) : t('welcome', j.name));
     await fetchData();
     render();
+    if (S.dirty.size) save(); // renvoie les pronos saisis avant de devoir se ré-identifier
     if (qpMatches().length) openQP();
   } catch {
     $('#j-err').textContent = t('joinSrvErr');
@@ -1104,8 +1199,12 @@ $('#btn-theme').addEventListener('click', () => {
 });
 
 // ---------- boucle ----------
+// Le poll/re-render ne doit jamais écraser une saisie en cours : on le suspend tant qu'il reste
+// du dirty, qu'un PUT est en vol, qu'une frappe date de moins de 3 s, ou qu'un champ a le focus.
 const editingNow = () =>
   S.dirty.size > 0 ||
+  S.saving ||
+  Date.now() - S.lastInput < 3000 ||
   qpVisible() ||
   (document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('bi'));
 
@@ -1124,7 +1223,15 @@ setInterval(() => { if (S.data && !editingNow()) renderHeader(); }, 30000);
   } catch { return; }
   resolveLang();
   applyStatic();
+  // rejoue les pronos saisis mais jamais confirmés (onglet fermé/évincé avant l'envoi)
+  if (S.key) {
+    try {
+      const pend = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
+      if (Array.isArray(pend) && pend.length) S.dirty = new Map(pend.map(([m, v]) => [Number(m), v]));
+    } catch { /* ignore */ }
+  }
   render();
+  if (S.dirty.size) scheduleSave();
   if (!S.key && !S.viewOnly) {
     openJoin();
   } else if (S.data.me && qpMatches().length && Date.now() - (+localStorage.getItem(QPKEY) || 0) > 12 * 3600000) {

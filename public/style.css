@@ -348,6 +348,7 @@ table.standings tr.q td { background: color-mix(in srgb, var(--green-soft) 55%, 
 }
 .champ-dd-opt:hover { background: var(--surf); }
 .champ-dd-opt.sel { background: var(--green-soft); }
+.champ-dd-opt[hidden] { display: none; } /* sinon display:flex écrase l'attribut hidden et le filtre ne masque rien */
 .champ-dd-empty { padding: 14px; color: var(--muted); font-size: 13px; text-align: center; }
 .champ-note { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .champ-row { display: flex; align-items: center; gap: 9px; padding: 6px 2px; border-top: 1px solid var(--line); font-size: 13.5px; }
@@ -527,6 +528,20 @@ table.standings tr.q td { background: color-mix(in srgb, var(--green-soft) 55%, 
   .qp-when { font-size: 9.5px; }
   .qp-in .bi { width: 56px; height: 50px; font-size: 22px; }
 }
+
+/* ---------- indicateur de sauvegarde ---------- */
+.savepill {
+  position: fixed; left: 16px; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 190;
+  display: flex; align-items: center; gap: 6px;
+  background: var(--card); color: var(--muted);
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 7px 14px; font-size: 12.5px; font-weight: 600;
+  box-shadow: var(--shadow);
+}
+.savepill[hidden] { display: none; }
+.savepill.ok { color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, var(--line)); }
+.savepill.err { color: #fff; background: var(--red); border-color: var(--red); }
+@media (max-width: 700px) { .savepill { left: 10px; bottom: max(10px, env(safe-area-inset-bottom)); font-size: 12px; } }
 
 /* ---------- toast ---------- */
 .toast {
