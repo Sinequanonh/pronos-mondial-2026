@@ -207,7 +207,9 @@ app.get('/api/pool/:token', ah(async (req, res) => {
     locked: championLocked(),
     mine: me ? ((champRows.find((r) => r.pid === me.id) || {}).team || null) : null,
     count: champRows.length,
-    // les pronos des autres ne sortent du serveur qu'une fois le verrou tombé
+    // QUI a choisi (noms seulement, jamais l'équipe avant le verrou)
+    pickers: champRows.map((r) => r.name).sort((a, b) => a.localeCompare(b, 'fr')),
+    // les ÉQUIPES des autres ne sortent du serveur qu'une fois le verrou tombé
     picks: championLocked()
       ? champRows.map((r) => ({ name: r.name, team: r.team })).sort((a, b) => a.name.localeCompare(b.name, 'fr'))
       : null,

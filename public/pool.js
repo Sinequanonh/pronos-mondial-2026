@@ -107,6 +107,7 @@ const I18N = {
     champLockedSub: 'verrouillé — les pronos sont publics',
     champPlaceholder: 'Choisis ton pays…',
     champHidden: (n) => `${n} joueur${n > 1 ? 's ont' : ' a'} déjà choisi — pronos cachés jusqu'au verrouillage 🔒`,
+    champWhoHidden: 'le pays choisi reste caché jusqu\'au verrouillage',
     champSaved: (t2) => `🏆 Champion enregistré : ${t2}`,
     champJoinFirst: 'Inscris-toi (bouton « Participer ») pour miser sur ton champion.',
     champNoPick: 'pas de prono',
@@ -211,6 +212,7 @@ const I18N = {
     champLockedSub: 'locked — everyone\'s picks are public',
     champPlaceholder: 'Pick your country…',
     champHidden: (n) => `${n} player${n > 1 ? 's have' : ' has'} picked — hidden until lock 🔒`,
+    champWhoHidden: 'the chosen country stays hidden until lock',
     champSaved: (t2) => `🏆 Champion saved: ${t2}`,
     champJoinFirst: 'Join the pool ("Join in") to place your champion pick.',
     champNoPick: 'no pick',
@@ -609,9 +611,13 @@ function renderChampion() {
     } else {
       html += `<div class="champ-note">${t('champJoinFirst')}</div>`;
     }
+    const picked = new Set(c.pickers || []);
+    const whoRows = (S.data.players || []).map((name) => picked.has(name)
+      ? `<div class="row done">✓ <b>${esc(name)}</b></div>`
+      : `<div class="row wait">⏳ ${esc(name)}</div>`).join('');
     html += `<div class="champ-note">${t('champPoints', c.points || 10)}</div>
              <div class="champ-note">⏳ ${t('champDeadline', cap1(fmtDay(dd)), fmtTime(dd))}</div>
-             <div class="champ-note">${t('champHidden', c.count)}</div>`;
+             <div class="champ-who">${whoRows}<div class="who-note">🔒 ${t('champWhoHidden')}</div></div>`;
   } else {
     const byName = new Map((c.picks || []).map((p) => [p.name, p.team]));
     const rows = S.data.players.map((name) => {
@@ -637,7 +643,14 @@ async function saveChampion(teamKey) {
     const j = await res.json();
     if (!res.ok) { toast(`⚠️ ${trReason(j.error)}`, true); return; }
     S.data.champion.mine = j.team;
-    if (!hadPick) S.data.champion.count += 1;
+    if (!hadPick) {
+      S.data.champion.count += 1;
+      const me = S.data.me;
+      if (me && Array.isArray(S.data.champion.pickers) && !S.data.champion.pickers.includes(me.name)) {
+        S.data.champion.pickers.push(me.name);
+        S.data.champion.pickers.sort((a, b) => a.localeCompare(b, 'fr'));
+      }
+    }
     const tm = team(j.team);
     toast(t('champSaved', tm ? tNm(tm) : j.team));
     renderChampion();
