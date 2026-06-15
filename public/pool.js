@@ -108,6 +108,10 @@ const I18N = {
     champPlaceholder: 'Choisis ton pays…',
     champHidden: (n) => `${n} joueur${n > 1 ? 's ont' : ' a'} déjà choisi — pronos cachés jusqu'au verrouillage 🔒`,
     champWhoHidden: 'le pays choisi reste caché jusqu\'au verrouillage',
+    mvpDay: 'Joueur du jour',
+    mvpPts: (p) => `+${p} pt${p > 1 ? 's' : ''}`,
+    exactToast: '🎯 Score exact ! Bravo, +3',
+    badgesTitle: 'Les badges',
     champSaved: (t2) => `🏆 Champion enregistré : ${t2}`,
     champJoinFirst: 'Inscris-toi (bouton « Participer ») pour miser sur ton champion.',
     champNoPick: 'pas de prono',
@@ -213,6 +217,10 @@ const I18N = {
     champPlaceholder: 'Pick your country…',
     champHidden: (n) => `${n} player${n > 1 ? 's have' : ' has'} picked — hidden until lock 🔒`,
     champWhoHidden: 'the chosen country stays hidden until lock',
+    mvpDay: 'Player of the day',
+    mvpPts: (p) => `+${p} pt${p > 1 ? 's' : ''}`,
+    exactToast: '🎯 Exact score! Nice, +3',
+    badgesTitle: 'Badges',
     champSaved: (t2) => `🏆 Champion saved: ${t2}`,
     champJoinFirst: 'Join the pool ("Join in") to place your champion pick.',
     champNoPick: 'no pick',
@@ -680,6 +688,85 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ---------- classement joueurs ----------
+// ---------- badges rigolos ----------
+const BADGES = {
+  oeil:        { emoji: '🎯', fr: 'Œil de lynx',  en: 'Sharp eye',     dfr: 'a trouvé un score exact',          den: 'nailed an exact score' },
+  nostradamus: { emoji: '🔮', fr: 'Nostradamus',  en: 'Nostradamus',   dfr: '3 scores exacts ou plus',          den: '3+ exact scores' },
+  feu:         { emoji: '🔥', fr: 'En feu',       en: 'On fire',       dfr: '3 bons pronos d\'affilée',          den: '3 correct picks in a row' },
+  bleu:        { emoji: '🇫🇷', fr: 'Cœur bleu',    en: 'True blue',     dfr: 'toujours derrière les Bleus',       den: 'always backs France' },
+  beton:       { emoji: '🧱', fr: 'Bétonneur',    en: 'The wall',      dfr: 'fan des matchs fermés',             den: 'loves low-scoring games' },
+  flambeur:    { emoji: '🎰', fr: 'Le Flambeur',  en: 'High roller',   dfr: 'parie sur les cartons',             den: 'bets on goal fests' },
+  ane:         { emoji: '🪅', fr: 'Bonnet d\'âne', en: 'Wooden spoon',  dfr: 'dernier du classement',             den: 'last place' },
+  fantome:     { emoji: '👻', fr: 'Fantôme',      en: 'No-show',       dfr: 'a zappé tous les matchs joués',     den: 'skipped every played match' },
+};
+const badgeLabel = (k) => (BADGES[k] ? (LANG === 'fr' ? BADGES[k].fr : BADGES[k].en) : k);
+const badgeDesc = (k) => (BADGES[k] ? (LANG === 'fr' ? BADGES[k].dfr : BADGES[k].den) : '');
+
+// ---------- joueur du jour ----------
+function playerOfDay() {
+  const fin = S.data.matches.filter((m) => m.finished);
+  if (!fin.length) return null;
+  const latest = fin.map((m) => m.date).sort((a, b) => b.localeCompare(a))[0];
+  const dayK = dayKeyOf(latest);
+  const dayMatches = fin.filter((m) => dayKeyOf(m.date) === dayK);
+  const tally = new Map();
+  for (const m of dayMatches) for (const o of (S.data.others[m.id] || [])) {
+    if (o.pts == null) continue;
+    tally.set(o.name, (tally.get(o.name) || 0) + o.pts);
+  }
+  let max = 0;
+  for (const v of tally.values()) max = Math.max(max, v);
+  if (max <= 0) return null;
+  const winners = [...tally].filter(([, p]) => p === max).map(([n]) => n).sort((a, b) => a.localeCompare(b, LANG));
+  return { date: dayMatches[0].date, winners, pts: max };
+}
+
+// ---------- confettis (score exact) ----------
+const CONFKEY = 'pronos26:conf:' + TOKEN;
+function fireConfetti() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  let cv = document.getElementById('confetti-cv');
+  if (!cv) { cv = document.createElement('canvas'); cv.id = 'confetti-cv'; cv.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:300'; document.body.appendChild(cv); }
+  const ctx = cv.getContext('2d');
+  const W = cv.width = window.innerWidth, H = cv.height = window.innerHeight;
+  const colors = ['#2563eb', '#ffffff', '#dc2626', '#fbbf24', '#34d399'];
+  const parts = Array.from({ length: 150 }, () => ({
+    x: W / 2 + (Math.random() - 0.5) * 140, y: H * 0.3,
+    vx: (Math.random() - 0.5) * 15, vy: Math.random() * -15 - 4,
+    g: 0.32 + Math.random() * 0.12, s: 5 + Math.random() * 7,
+    rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 0.35,
+    c: colors[(Math.random() * colors.length) | 0],
+  }));
+  let t0 = null;
+  (function frame(t) {
+    if (t0 == null) t0 = t;
+    const el = t - t0;
+    ctx.clearRect(0, 0, W, H);
+    for (const p of parts) {
+      p.vy += p.g; p.x += p.vx; p.y += p.vy; p.rot += p.vr; p.vx *= 0.99;
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+      ctx.globalAlpha = Math.max(0, 1 - el / 2600); ctx.fillStyle = p.c;
+      ctx.fillRect(-p.s / 2, -p.s / 2, p.s, p.s * 0.55);
+      ctx.restore();
+    }
+    if (el < 2600) requestAnimationFrame(frame); else cv.remove();
+  })(performance.now());
+}
+function celebrateExacts() {
+  if (!S.data || !S.data.me) return;
+  let done; try { done = new Set(JSON.parse(localStorage.getItem(CONFKEY) || '[]')); } catch { done = new Set(); }
+  let fire = false;
+  for (const m of S.data.matches) {
+    const pick = S.data.mine[m.id];
+    if (!m.finished || !pick || done.has(m.id)) continue;
+    if (ptsOf(m, pick) !== 3) continue;
+    done.add(m.id);
+    if (Date.now() - Date.parse(m.date) < 8 * 3600000) fire = true; // résultat récent → on fête
+  }
+  try { localStorage.setItem(CONFKEY, JSON.stringify([...done])); } catch { /* ignore */ }
+  if (fire) { fireConfetti(); toast(t('exactToast')); }
+}
+
 function renderBoard() {
   const lb = S.data.leaderboard;
   $('#board-sub').textContent = t('players', lb.length);
@@ -687,10 +774,14 @@ function renderBoard() {
     $('#board').innerHTML = `<div class="empty">${t('boardEmpty')}</div>`;
     return;
   }
-  $('#board').innerHTML = lb.map((r, i) => `
+  const mvp = playerOfDay();
+  const mvpHtml = mvp
+    ? `<div class="mvp"><span class="mvp-star">🌟</span><div class="mvp-txt"><b>${t('mvpDay')}</b> · ${esc(cap1(fmtDay(mvp.date)))}<br>${mvp.winners.map(esc).join(' & ')} <span class="mvp-pts">${t('mvpPts', mvp.pts)}</span></div></div>`
+    : '';
+  $('#board').innerHTML = mvpHtml + lb.map((r, i) => `
     <div class="board-row ${r.isMe ? 'me' : ''}">
       <span class="rk">${i === 0 && r.pts > 0 ? '👑' : i + 1}</span>
-      <span class="nm">${esc(r.name)}<small>${t('exactSub', r.exact, r.outcome)}${r.champ ? ` · 🏆 +${(S.data.champion && S.data.champion.points) || 10}` : ''}</small></span>
+      <span class="nm"><span class="nm-line"><span class="nm-name">${esc(r.name)}</span>${(r.badges && r.badges.length) ? `<span class="badges">${r.badges.map((b) => `<span class="badge" title="${esc(badgeLabel(b) + ' — ' + badgeDesc(b))}">${BADGES[b] ? BADGES[b].emoji : ''}</span>`).join('')}</span>` : ''}</span><small>${t('exactSub', r.exact, r.outcome)}${r.champ ? ` · 🏆 +${(S.data.champion && S.data.champion.points) || 10}` : ''}</small></span>
       <span class="pt">${r.pts}<small> pt${r.pts > 1 ? 's' : ''}</small></span>
     </div>`).join('');
 }
@@ -706,6 +797,9 @@ function renderRules() {
     <span class="dot" style="background:#80868b"></span>${t('rule0')}<br>
     <span class="dot" style="background:#fbbf24"></span>${t('ruleChamp', (S.data.champion && S.data.champion.points) || 10)}<br>
     ${t('ruleKo')}<br><br>
+    <b>${t('badgesTitle')}</b>
+    <div class="badge-legend">${Object.keys(BADGES).map((k) => `<span class="bl"><span class="be">${BADGES[k].emoji}</span> ${esc(badgeLabel(k))} — <i>${esc(badgeDesc(k))}</i></span>`).join('')}</div>
+    <br>
     ${S.data.me ? t('myCount', mineCount, open) + '<br>' : ''}
     <span style="opacity:.75">${t('syncInfo', sync)}</span>`;
 }
@@ -926,6 +1020,7 @@ function render() {
   renderRules();
   renderBanner();
   $('#foot').textContent = t('foot');
+  celebrateExacts(); // confettis si un score exact vient de tomber
 }
 
 // ---------- réseau ----------
