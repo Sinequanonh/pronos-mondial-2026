@@ -83,6 +83,20 @@ header.top {
 .next .live { color: var(--live); font-weight: 700; }
 @media (max-width: 1000px) { .next { display: none; } .top-in { justify-content: space-between; } }
 
+/* point rouge pulsant « live » (remplace l'emoji 🔴) — lente pulsation + halo qui s'étend */
+.live-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: #ef4444; vertical-align: middle; position: relative; top: -1px; margin-right: 6px;
+  animation: live-pulse 2s ease-in-out infinite;
+}
+@keyframes live-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(239, 68, 68, .55); opacity: 1; }
+  50%  { opacity: .55; }
+  70%  { box-shadow: 0 0 0 7px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
+
 .userchip {
   display: flex; align-items: center; gap: 8px;
   background: var(--surf); color: var(--ink);
@@ -162,6 +176,14 @@ body[data-view="classement"] #sec-side { display: flex; max-width: 620px; margin
 .mi.lk:hover { background: var(--surf); }
 .mi-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .mi-meta { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .2px; text-transform: uppercase; }
+.mi-meta-r { display: inline-flex; align-items: center; gap: 8px; text-transform: none; letter-spacing: 0; }
+/* capitaine */
+.cap-star { border: 0; background: none; cursor: pointer; font-size: 14px; line-height: 1; padding: 0; color: var(--muted); -webkit-tap-highlight-color: transparent; transition: transform .15s ease; }
+.cap-star:hover { transform: scale(1.2); }
+.cap-star.on { color: var(--gold); }
+.cap-badge { color: var(--gold); font-weight: 800; font-size: 11px; }
+.mi-wrap.is-cap .mi { box-shadow: inset 3px 0 0 var(--gold); }
+.gm-others .row.cap .nm { color: var(--gold); font-weight: 700; }
 .mi-team { display: flex; align-items: center; gap: 10px; min-height: 28px; }
 .mi-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; }
 .mi-team.ph .mi-name { color: var(--muted); font-weight: 400; font-size: 13px; }
@@ -317,7 +339,9 @@ table.standings tr.q td { background: color-mix(in srgb, var(--green-soft) 55%, 
   padding: 8px 8px; border-radius: 12px; font-size: 14px;
 }
 .board-row .rk { width: 26px; height: 26px; border-radius: 50%; background: var(--surf); color: var(--muted); font-size: 11.5px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
-.board-row:nth-child(1) .rk { background: var(--gold-soft); color: var(--gold); }
+.board-row .rk.rk1 { background: var(--gold-soft); }
+.board-row .rk.rk2 { background: color-mix(in srgb, #9ca3af 22%, var(--card)); }
+.board-row .rk.rk3 { background: color-mix(in srgb, #b45309 22%, var(--card)); }
 .board-row .nm { font-weight: 600; min-width: 0; }
 .board-row .nm-line { display: flex; align-items: center; gap: 5px; min-width: 0; }
 .board-row .nm-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
@@ -468,6 +492,41 @@ table.standings tr.q td { background: color-mix(in srgb, var(--green-soft) 55%, 
   100% { transform: translate(18px, -14px) scale(1.26) rotate(800deg); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .hf-ball { animation: none; } .hf-ticker-in { animation: none; } }
+
+/* Cercle de drapeaux qui tourne (façon Polymarket) — réutilisable */
+.flag-orbit { position: absolute; z-index: 0; pointer-events: none; --r: 116px; }
+.flag-orbit-spin { position: relative; width: 0; height: 0; animation: flag-spin 36s linear infinite; will-change: transform; }
+.flag-orbit .it { position: absolute; left: 0; top: 0; transform: rotate(var(--a)) translateY(calc(-1 * var(--r))); }
+.flag-orbit .it .up { display: block; animation: flag-spin-rev 36s linear infinite; }
+.flag-orbit .it .up img {
+  display: block; width: 38px; height: auto; margin: -13px 0 0 -19px; border-radius: 7px;
+  box-shadow: 0 7px 20px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 255, 255, .2);
+  transform: rotate(calc(-1 * var(--a)));
+}
+@keyframes flag-spin { to { transform: rotate(360deg); } }
+@keyframes flag-spin-rev { to { transform: rotate(-360deg); } }
+@media (prefers-reduced-motion: reduce) { .flag-orbit-spin, .flag-orbit .it .up { animation: none; } }
+
+/* Bannière déco permanente (façon Polymarket) : titre + cercle de drapeaux */
+.orbit-banner {
+  position: relative; overflow: hidden; border-radius: 20px; margin-top: 14px;
+  min-height: 180px; padding: 22px 26px; display: flex; align-items: flex-end;
+  background:
+    radial-gradient(680px 320px at 84% -30%, rgba(59, 130, 246, .38), transparent 60%),
+    radial-gradient(520px 280px at 6% 130%, rgba(16, 185, 129, .26), transparent 60%),
+    linear-gradient(120deg, #0b1220 0%, #131a2b 52%, #0b1220 100%);
+  border: 1px solid rgba(255, 255, 255, .12); color: #fff;
+}
+.orbit-banner .ob-txt { position: relative; z-index: 2; }
+.orbit-banner .ob-title { font-size: 34px; font-weight: 800; line-height: 1.04; letter-spacing: -.5px; text-shadow: 0 2px 18px rgba(0, 0, 0, .5); }
+.orbit-banner .ob-sub { font-size: 14px; font-weight: 600; opacity: .8; margin-top: 7px; }
+.orbit-banner .flag-orbit { top: 50%; right: 17%; --r: 78px; }
+@media (max-width: 700px) {
+  .orbit-banner { min-height: 168px; padding: 18px 18px; }
+  .orbit-banner .ob-title { font-size: 27px; }
+  .orbit-banner .flag-orbit { top: 38%; right: 20%; --r: 62px; }
+  .orbit-banner .flag-orbit .it .up img { width: 31px; margin: -11px 0 0 -15px; }
+}
 .hf-subflag { width: 21px; height: 14px; object-fit: cover; border-radius: 3px; vertical-align: -2px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .2); }
 .hf-x {
   position: absolute; top: 10px; right: 12px; z-index: 3;

@@ -57,7 +57,8 @@ const I18N = {
     phW: (n) => `Vainq. m${n}`, phL: (n) => `Perd. m${n}`,
     nextMatch: (vs, rel) => `Prochain match : <b>${vs}</b> ${rel}`,
     over: 'Compétition terminée 🏆',
-    liveNow: (s) => `🔴 ${s}`,
+    liveNow: (s) => s,
+    obTitle: 'Coupe du Monde 2026', obSub: 'Qui sera champion du monde ?',
     today: "Aujourd'hui", tomorrow: 'Demain',
     finished: 'Terminé', liveWord: 'Live',
     showPast: (n) => `Afficher les ${n} jours passés`, hidePast: 'Masquer les jours passés',
@@ -117,6 +118,11 @@ const I18N = {
     setTheme: 'Thème',
     setThemeLight: 'Clair',
     setThemeDark: 'Sombre',
+    captainSet: 'Capitaine (×2) de la journée',
+    captainTip: 'Capitaine — points ×2',
+    captainSaved: (lbl) => (lbl ? `⭐ Capitaine : ${lbl}` : '⭐ Capitaine enregistré'),
+    captainCleared: 'Capitaine retiré',
+    ruleCaptain: '<b>⭐ Capitaine</b> — 1 match ×2 par journée (à choisir avant le coup d\'envoi)',
     champSaved: (t2) => `🏆 Champion enregistré : ${t2}`,
     champJoinFirst: 'Inscris-toi (bouton « Participer ») pour miser sur ton champion.',
     champNoPick: 'pas de prono',
@@ -144,6 +150,10 @@ const I18N = {
       'PIN : 3 à 6 chiffres': 'PIN : 3 à 6 chiffres',
       'prono champion verrouillé': 'prono champion verrouillé',
       'équipe inconnue': 'équipe inconnue',
+      'journée commencée': 'journée déjà commencée',
+      'match hors journée': 'match hors de cette journée',
+      'journée invalide': 'journée invalide',
+      'journée inconnue': 'journée inconnue',
     },
   },
   en: {
@@ -171,7 +181,8 @@ const I18N = {
     phW: (n) => `W m${n}`, phL: (n) => `L m${n}`,
     nextMatch: (vs, rel) => `Next match: <b>${vs}</b> ${rel}`,
     over: 'Tournament over 🏆',
-    liveNow: (s) => `🔴 ${s}`,
+    liveNow: (s) => s,
+    obTitle: 'World Cup 2026', obSub: 'Who will be world champion?',
     today: 'Today', tomorrow: 'Tomorrow',
     finished: 'FT', liveWord: 'Live',
     showPast: (n) => `Show ${n} past day${n > 1 ? 's' : ''}`, hidePast: 'Hide past days',
@@ -231,6 +242,11 @@ const I18N = {
     setTheme: 'Theme',
     setThemeLight: 'Light',
     setThemeDark: 'Dark',
+    captainSet: 'Captain (×2) of the matchday',
+    captainTip: 'Captain — points ×2',
+    captainSaved: (lbl) => (lbl ? `⭐ Captain: ${lbl}` : '⭐ Captain saved'),
+    captainCleared: 'Captain cleared',
+    ruleCaptain: '<b>⭐ Captain</b> — one match ×2 per matchday (pick before kickoff)',
     champSaved: (t2) => `🏆 Champion saved: ${t2}`,
     champJoinFirst: 'Join the pool ("Join in") to place your champion pick.',
     champNoPick: 'no pick',
@@ -258,6 +274,10 @@ const I18N = {
       'PIN : 3 à 6 chiffres': 'PIN: 3–6 digits',
       'prono champion verrouillé': 'champion pick is locked',
       'équipe inconnue': 'unknown team',
+      'journée commencée': 'matchday already started',
+      'match hors journée': 'match not in this matchday',
+      'journée invalide': 'invalid matchday',
+      'journée inconnue': 'unknown matchday',
     },
   },
 };
@@ -297,6 +317,8 @@ const myPick = (id) => (S.data && S.data.mine[id]) || null;
 const canEdit = (m) => !!(S.key && S.data.me && !m.locked && team(m.home) && team(m.away));
 const isLive = (m) => !m.finished && (m.lstate === 'in' || (m.locked && Date.now() - Date.parse(m.date) < 140 * 60000));
 const hasLiveScore = (m) => isLive(m) && m.lhs != null && m.las != null;
+// point rouge pulsant : « ça joue en ce moment » (remplace l'emoji 🔴)
+const LIVE_DOT = '<span class="live-dot" aria-hidden="true"></span>';
 
 const flagImg = (code, cls = 'fl') =>
   `<img class="${cls}" src="https://flagcdn.com/${cls.includes('big') ? 'h80' : 'h40'}/${code}.png" alt="" loading="lazy">`;
@@ -348,6 +370,17 @@ function ptsOf(m, pred) {
 }
 const chipHtml = (pts) =>
   pts == null ? '' : `<span class="chip c${pts}">${pts > 0 ? '+' + pts : '0'}</span>`;
+// pastille de points, doublée si capitaine (couleur basée sur les points bruts)
+const ptsChip = (raw, cap) => {
+  if (raw == null) return '';
+  const v = cap ? raw * 2 : raw;
+  return `<span class="chip c${raw}">${v > 0 ? '+' + v : '0'}${cap ? ' ⭐' : ''}</span>`;
+};
+
+// ---------- capitaine (1 match ×2 par journée/round) ----------
+const roundStarted = (round) => S.roundMin && S.roundMin[round] != null && S.roundMin[round] <= Date.now();
+const myCap = (m) => !!(S.data && S.data.captains && S.data.captains[m.round] === m.id);
+const capSettable = (m) => !!(S.data && S.data.me && !roundStarted(m.round));
 
 // ---------- placeholders ----------
 function phLabel(m, side) {
@@ -383,10 +416,10 @@ function miScore(m, side) {
 }
 
 function miSide(m) {
-  if (isLive(m)) return `<span class="live">${t('liveWord')}</span><span class="live">${esc(m.lmin || '')}</span>`;
+  if (isLive(m)) return `<span class="live">${LIVE_DOT}${t('liveWord')}</span><span class="live">${esc(m.lmin || '')}</span>`;
   if (m.finished) {
     const my = myPick(m.id);
-    return `<span>${t('finished')}</span>${my ? chipHtml(ptsOf(m, my)) : ''}`;
+    return `<span>${t('finished')}</span>${my ? ptsChip(ptsOf(m, my), myCap(m)) : ''}`;
   }
   const k = dayKeyOf(m.date);
   const day = k === dayKeyOf(Date.now()) ? t('today') : k === dayKeyOf(Date.now() + 86400000) ? t('tomorrow') : fmtDay(m.date);
@@ -401,14 +434,15 @@ function matchItem(m, showStage) {
 
   const label = showStage ? (m.grp ? t('group', m.grp) : t('stageShort')[m.stage] || I18N[LANG].stageShort[m.stage]) : '';
   const pickersList = (S.data.pickers || {})[m.id] || [];
-  const metaR = !m.locked
-    ? `<button class="who-btn" data-who="${m.id}" title="${t('whoTitle')}">👥 ${S.data.counts[m.id] || 0} ▾</button>`
-    : expandable ? '▾' : '';
+  const metaR = !m.locked ? '' : (expandable ? '▾' : '');
+  // contrôle capitaine : étoile à cocher si la journée n'a pas commencé, sinon marqueur ⭐×2 sur mon capitaine
+  const capCtl = capSettable(m)
+    ? `<button class="cap-star ${myCap(m) ? 'on' : ''}" data-cap-round="${m.round}" data-cap-match="${m.id}" title="${t('captainSet')}">${myCap(m) ? '⭐' : '☆'}</button>`
+    : myCap(m) ? `<span class="cap-badge" title="${t('captainTip')}">⭐×2</span>` : '';
   const whoHtml = !m.locked && S.data.players.length
-    ? `<div class="who-panel" hidden>
+    ? `<div class="who-panel">
         ${pickersList.map((n) => `<div class="row done">✓ <b>${esc(n)}</b></div>`).join('')}
         ${S.data.players.filter((p) => !pickersList.includes(p)).map((n) => `<div class="row wait">⏳ ${esc(n)}</div>`).join('')}
-        <div class="who-note">🔒 ${t('whoHidden')}</div>
       </div>`
     : '';
   const teamRow = (side) => {
@@ -421,16 +455,16 @@ function matchItem(m, showStage) {
     </div>`;
   };
   const mineLine = m.locked && my
-    ? `<div class="mi-mine">${t('mine')} : ${my[0]}–${my[1]}${m.finished ? ' ' + chipHtml(ptsOf(m, my)) : ''}</div>`
+    ? `<div class="mi-mine">${t('mine')} : ${my[0]}–${my[1]}${m.finished ? ' ' + ptsChip(ptsOf(m, my), myCap(m)) : ''}</div>`
     : '';
   const othersHtml = expandable
     ? `<div class="gm-others" data-o="${m.id}" hidden>${others.map((o) =>
-        `<div class="row"><span class="nm">${esc(o.name)}</span><span class="sc">${o.h}<i>–</i>${o.a}</span><span class="ch">${chipHtml(o.pts)}</span></div>`).join('')}</div>`
+        `<div class="row ${o.cap ? 'cap' : ''}"><span class="nm">${o.cap ? '⭐ ' : ''}${esc(o.name)}</span><span class="sc">${o.h}<i>–</i>${o.a}</span><span class="ch">${ptsChip(o.pts, o.cap)}</span></div>`).join('')}</div>`
     : '';
 
-  return `<div class="mi-wrap"><div class="mi ${expandable ? 'lk' : ''}" data-gm="${m.id}" data-pair="${m.id}" ${expandable ? `title="${t('seeAll')}"` : ''}>
+  return `<div class="mi-wrap ${myCap(m) ? 'is-cap' : ''}"><div class="mi ${expandable ? 'lk' : ''}" data-gm="${m.id}" data-pair="${m.id}" ${expandable ? `title="${t('seeAll')}"` : ''}>
       <div class="mi-main">
-        ${(label || metaR) ? `<div class="mi-meta"><span>${label}</span><span>${metaR}</span></div>` : ''}
+        ${(label || metaR || capCtl) ? `<div class="mi-meta"><span>${label}</span><span class="mi-meta-r">${capCtl}${metaR}</span></div>` : ''}
         ${teamRow('h')}${teamRow('a')}
         ${mineLine}
       </div>
@@ -494,7 +528,7 @@ function bmCard(id, cls = '') {
   const pred = myPick(id);
   const chip = m.finished && pred ? chipHtml(ptsOf(m, pred)) : '';
   const right = isLive(m)
-    ? `<span class="gm-live">${esc(m.lmin || 'LIVE')}</span>`
+    ? `<span class="gm-live">${LIVE_DOT}${esc(m.lmin || 'LIVE')}</span>`
     : esc((m.loc || '').replace(' Stadium', ''));
   return `<div class="bm ${m.finished ? 'done' : ''} ${cls}" data-m="${id}" data-pair="${id}">${chip}
     ${bmRow(m, 'h')}${bmRow(m, 'a')}
@@ -676,6 +710,26 @@ async function saveChampion(teamKey) {
   }
 }
 
+async function setCaptain(round, matchId) {
+  try {
+    const res = await api('PUT', `/api/pool/${encodeURIComponent(TOKEN)}/captain`, { round, matchId });
+    const j = await res.json();
+    if (!res.ok) { toast(`⚠️ ${trReason(j.error)}`, true); return; }
+    if (matchId == null) delete S.data.captains[round];
+    else S.data.captains[round] = matchId;
+    if (matchId) {
+      const m = M(matchId);
+      const lbl = m && team(m.home) && team(m.away) ? `${team(m.home).tri}–${team(m.away).tri}` : '';
+      toast(t('captainSaved', lbl));
+    } else {
+      toast(t('captainCleared'));
+    }
+    render();
+  } catch {
+    toast(t('offline'), true);
+  }
+}
+
 const normTxt = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 document.addEventListener('input', (e) => {
@@ -706,6 +760,33 @@ const BADGES = {
   flambeur:    { emoji: '🎰', fr: 'Le Flambeur',  en: 'High roller',   dfr: 'parie sur les cartons',             den: 'bets on goal fests' },
   ane:         { emoji: '🪅', fr: 'Bonnet d\'âne', en: 'Wooden spoon',  dfr: 'dernier du classement',             den: 'last place' },
   fantome:     { emoji: '👻', fr: 'Fantôme',      en: 'No-show',       dfr: 'a zappé tous les matchs joués',     den: 'skipped every played match' },
+  // précision
+  journeeParfaite: { emoji: '💯', fr: 'Journée parfaite', en: 'Perfect day', dfr: 'tous les matchs d\'un jour pile poil', den: 'every match of a day nailed' },
+  francTireur: { emoji: '🎯', fr: 'Le Franc-tireur', en: 'Lone sniper', dfr: 'score exact que personne d\'autre n\'a osé', den: 'exact score nobody else dared' },
+  presque:     { emoji: '😤', fr: 'À un but près', en: 'So close',     dfr: 'le roi du « j\'y étais presque »',  den: 'king of the near-miss' },
+  tacticien:   { emoji: '🧮', fr: 'Le Comptable',  en: 'The accountant', dfr: 'bon nombre de buts, mauvais résultat', den: 'right total, wrong winner' },
+  horloge:     { emoji: '⏱️', fr: 'Horloge suisse', en: 'Clockwork',   dfr: 'jamais un match à 0 point',         den: 'never a blank' },
+  // manies
+  oneNil:      { emoji: '1️⃣', fr: 'Monsieur 1-0',  en: 'The 1-0 merchant', dfr: 'le 1-0, encore et toujours',   den: '1-0, again and again' },
+  mirror:      { emoji: '🪞', fr: 'Le Miroir',     en: 'Mirror mind',   dfr: 'n\'aime que les scores symétriques', den: 'loves symmetrical scores' },
+  fessee:      { emoji: '🍑', fr: 'Roi de la fessée', en: 'Thrashing fan', dfr: 'prédit des raclées à la chaîne', den: 'predicts blowouts non-stop' },
+  optimiste:   { emoji: '🌈', fr: 'L\'Optimiste',  en: 'The optimist',  dfr: 'des pluies de buts à chaque match', den: 'goal fests every time' },
+  rabatjoie:   { emoji: '😴', fr: 'Le Rabat-joie', en: 'The killjoy',   dfr: 'pour lui, le foot c\'est 0-0',      den: 'football is all 0-0' },
+  casanier:    { emoji: '🏟️', fr: 'L\'Avantage du terrain', en: 'The homer', dfr: 'mise quasi toujours sur l\'équipe à domicile', den: 'almost always backs the home side' },
+  // timing
+  buzzer:      { emoji: '⏰', fr: 'Buzzer beater', en: 'Buzzer beater', dfr: 'pronos posés à la dernière seconde', den: 'picks filed at the last second' },
+  leveTot:     { emoji: '🐓', fr: 'Le Lève-tôt',   en: 'The early bird', dfr: 'toujours prêt des jours à l\'avance', den: 'ready days ahead' },
+  nuit:        { emoji: '🦉', fr: 'L\'Oiseau de nuit', en: 'Night owl', dfr: 'pronostique à 3 h du mat',          den: 'predicts at 3 a.m.' },
+  // social
+  mouton:      { emoji: '🐑', fr: 'Le Mouton',     en: 'The sheep',     dfr: 'suit toujours le troupeau',         den: 'always follows the flock' },
+  loup:        { emoji: '🐺', fr: 'Loup solitaire', en: 'Lone wolf',    dfr: 'toujours à contre-courant',          den: 'always against the grain' },
+  contre:      { emoji: '🧭', fr: 'À contre-courant', en: 'Lone dissenter', dfr: 'seul à pronostiquer l\'inverse de tous', den: 'sole pick against everyone' },
+  // champion
+  championPrecoce: { emoji: '🏆', fr: 'Champion day one', en: 'Day-one believer', dfr: 'champion choisi avant le coup d\'envoi', den: 'champion locked before kickoff' },
+  rebelleTitre: { emoji: '🎸', fr: 'Le Rebelle du titre', en: 'Title rebel', dfr: 'seul à croire en son champion',  den: 'sole believer in his champ' },
+  // chambrage
+  roiZero:     { emoji: '🥶', fr: 'Roi du 0 point', en: 'Mr. Zero',     dfr: '5 matchs ratés d\'affilée',          den: '5 blanks in a row' },
+  maudit:      { emoji: '💀', fr: 'Le Maudit',     en: 'The cursed',    dfr: 'les équipes qu\'il sacre perdent',   den: 'teams he backs keep losing' },
 };
 const badgeLabel = (k) => (BADGES[k] ? (LANG === 'fr' ? BADGES[k].fr : BADGES[k].en) : k);
 const badgeDesc = (k) => (BADGES[k] ? (LANG === 'fr' ? BADGES[k].dfr : BADGES[k].den) : '');
@@ -786,9 +867,10 @@ function renderBoard() {
   const mvpHtml = mvp
     ? `<div class="mvp"><span class="mvp-star">🌟</span><div class="mvp-txt"><b>${t('mvpDay')}</b> · ${esc(cap1(fmtDay(mvp.date)))}<br>${mvp.winners.map(esc).join(' & ')} <span class="mvp-pts">${t('mvpPts', mvp.pts)}</span></div></div>`
     : '';
+  const medal = (i, pts) => (pts > 0 && i < 3 ? ['👑', '🥈', '🥉'][i] : i + 1);
   $('#board').innerHTML = mvpHtml + lb.map((r, i) => `
     <div class="board-row ${r.isMe ? 'me' : ''}">
-      <span class="rk">${i === 0 && r.pts > 0 ? '👑' : i + 1}</span>
+      <span class="rk ${r.pts > 0 && i < 3 ? 'rk' + (i + 1) : ''}">${medal(i, r.pts)}</span>
       <span class="nm"><span class="nm-line"><span class="nm-name">${esc(r.name)}</span>${(r.badges && r.badges.length) ? `<span class="badges">${r.badges.map((b) => {
         const meta = BADGES[b]; if (!meta) return '';
         const txt = badgeLabel(b) + ' — ' + badgeDesc(b);
@@ -808,6 +890,7 @@ function renderRules() {
     <span class="dot" style="background:#e8710a"></span>${t('rule1')}<br>
     <span class="dot" style="background:#80868b"></span>${t('rule0')}<br>
     <span class="dot" style="background:#fbbf24"></span>${t('ruleChamp', (S.data.champion && S.data.champion.points) || 10)}<br>
+    <span class="dot" style="background:#fbbf24"></span>${t('ruleCaptain')}<br>
     ${t('ruleKo')}<br><br>
     <b>${t('badgesTitle')}</b>
     <div class="badge-legend">${Object.keys(BADGES).map((k) => `<span class="bl"><span class="be">${BADGES[k].emoji}</span> ${esc(badgeLabel(k))} — <i>${esc(badgeDesc(k))}</i></span>`).join('')}</div>
@@ -838,7 +921,7 @@ function renderHeader() {
   const live = S.data.matches.filter(isLive);
   const next = S.data.matches.filter((m) => !m.locked).sort((a, b) => a.date.localeCompare(b.date))[0];
   $('#h-next').innerHTML = live.length
-    ? `<span class="live">${t('liveNow', live.slice(0, 2).map(liveLabel).join(' · '))}</span>`
+    ? `<span class="live">${LIVE_DOT}${t('liveNow', live.slice(0, 2).map(liveLabel).join(' · '))}</span>`
     : next ? t('nextMatch', vsShort(next), fmtRel(next.date)) : t('over');
 
   const u = $('#h-user');
@@ -953,7 +1036,7 @@ function renderFranceHero() {
     const stage = m.grp ? t('group', m.grp) : (I18N[LANG].stageShort[m.stage] || '');
     const picks = S.data.counts[m.id] || 0;
     const status = live
-      ? `<div class="hf-live">${m.lhs ?? 0}–${m.las ?? 0}<span>🔴 ${esc(m.lmin || 'LIVE')}</span></div>`
+      ? `<div class="hf-live">${m.lhs ?? 0}–${m.las ?? 0}<span>${LIVE_DOT}${esc(m.lmin || 'LIVE')}</span></div>`
       : `<div class="hf-count" data-hf-date="${m.date}">${hfCountdown(m.date)}</div>`;
     card = `
       <div class="hf-card">
@@ -993,6 +1076,29 @@ function renderFranceHero() {
     ${card}`;
 }
 
+// Cercle de drapeaux qui tourne (façon Polymarket) — les drapeaux restent droits en orbitant.
+function flagOrbit() {
+  const names = ['France', 'Brazil', 'Argentina', 'Spain', 'England', 'Germany', 'Portugal', 'Netherlands', 'Belgium', 'Morocco'];
+  const codes = names.map((n) => (S.data.teams[n] || {}).code).filter(Boolean);
+  const n = codes.length || 1;
+  const items = codes.map((c, i) =>
+    `<span class="it" style="--a:${(i * 360 / n).toFixed(2)}deg"><span class="up"><img src="https://flagcdn.com/h40/${c}.png" srcset="https://flagcdn.com/h80/${c}.png 2x" alt="" loading="lazy"></span></span>`).join('');
+  return `<div class="flag-orbit" aria-hidden="true"><div class="flag-orbit-spin">${items}</div></div>`;
+}
+
+// Bannière déco permanente : titre + cercle de drapeaux qui tourne (façon Polymarket).
+function renderOrbitBanner() {
+  const el = $('#orbit-banner');
+  if (!el || !S.data || !S.data.teams) return;
+  el.hidden = false;
+  el.innerHTML = `
+    ${flagOrbit()}
+    <div class="ob-txt">
+      <div class="ob-title">${t('obTitle')}</div>
+      <div class="ob-sub">${t('obSub')}</div>
+    </div>`;
+}
+
 setInterval(() => {
   const c = document.querySelector('[data-hf-date]');
   if (c) c.textContent = hfCountdown(c.dataset.hfDate);
@@ -1022,7 +1128,14 @@ function applyStatic() {
 }
 
 function render() {
+  // début de chaque journée (round) = coup d'envoi du 1er match → sert au verrou capitaine
+  S.roundMin = {};
+  for (const m of S.data.matches) {
+    const d = Date.parse(m.date);
+    if (S.roundMin[m.round] == null || d < S.roundMin[m.round]) S.roundMin[m.round] = d;
+  }
   renderHeader();
+  renderOrbitBanner();
   renderFranceHero();
   renderMatchs();
   renderBracket();
@@ -1198,6 +1311,14 @@ document.addEventListener('click', (e) => {
   const badge = e.target.closest('.board-row .badge');
   document.querySelectorAll('.board-row .badge.show').forEach((b) => { if (b !== badge) b.classList.remove('show'); });
   if (badge) { badge.classList.toggle('show'); return; }
+  // capitaine : (dé)sélectionne le match doublé de la journée
+  const capBtn = e.target.closest('[data-cap-round]');
+  if (capBtn) {
+    const round = Number(capBtn.dataset.capRound);
+    const matchId = Number(capBtn.dataset.capMatch);
+    setCaptain(round, S.data.captains[round] === matchId ? null : matchId);
+    return;
+  }
   const ddBtn = e.target.closest('[data-champ-dd]');
   if (ddBtn) {
     const panel = ddBtn.parentElement.querySelector('.champ-dd-panel');

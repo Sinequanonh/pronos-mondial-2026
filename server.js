@@ -176,6 +176,20 @@ app.get('/api/pool/:token', ah(async (req, res) => {
     WHERE pl.pool_id = ?
   `, [pool.id]);
 
+  // capitaine : un match doublé par journée (round). On révèle qui a capitainé quoi seulement
+  // sur les matchs verrouillés (la journée a commencé) ; on renvoie toujours MES capitaines.
+  const capRows = await all(`
+    SELECT cp.player_id, cp.round, cp.match_id, pl.name FROM captain_picks cp
+    JOIN players pl ON pl.id = cp.player_id WHERE pl.pool_id = ?
+  `, [pool.id]);
+  const capByMatch = new Map(); // matchId -> Set(noms)
+  const myCaptains = {};         // round -> matchId (pour moi)
+  for (const r of capRows) {
+    if (!capByMatch.has(r.match_id)) capByMatch.set(r.match_id, new Set());
+    capByMatch.get(r.match_id).add(r.name);
+    if (me && r.player_id === me.id) myCaptains[r.round] = r.match_id;
+  }
+
   const mine = {};
   const others = {};
   const counts = {};
@@ -191,6 +205,7 @@ app.get('/api/pool/:token', ah(async (req, res) => {
         name: pr.player_name,
         h: pr.home,
         a: pr.away,
+        cap: (capByMatch.get(pr.match_id) || new Set()).has(pr.player_name),
         pts: m.finished ? pointsFor({ ...m, home_score: m.hs, away_score: m.as }, pr.home, pr.away) : null,
       });
     }
@@ -218,6 +233,7 @@ app.get('/api/pool/:token', ah(async (req, res) => {
   res.json({
     pool: { name: pool.name, lang: pool.lang || 'fr' },
     champion,
+    captains: myCaptains,
     me,
     players: (await all('SELECT name FROM players WHERE pool_id = ? ORDER BY name', [pool.id])).map((p) => p.name),
     teams: TEAMS,
@@ -381,6 +397,34 @@ app.put('/api/pool/:token/champion', ah(async (req, res) => {
     ON CONFLICT(player_id) DO UPDATE SET team = excluded.team, updated_at = excluded.updated_at
   `, [player.id, team]);
   res.json({ ok: true, team });
+}));
+
+// Capitaine : un match doublé par journée (round). Verrouillé au coup d'envoi du 1er match de la journée.
+app.put('/api/pool/:token/captain', ah(async (req, res) => {
+  const pool = await get('SELECT * FROM pools WHERE token = ?', [req.params.token]);
+  if (!pool) return res.status(404).json({ error: 'Pool introuvable' });
+  const player = await get('SELECT * FROM players WHERE key = ?', [req.get('x-player-key') || '']);
+  if (!player || player.pool_id !== pool.id) return res.status(401).json({ error: 'Reconnecte-toi (pseudo)' });
+
+  const round = Number(req.body.round);
+  const matchId = req.body.matchId == null ? null : Number(req.body.matchId);
+  if (!Number.isInteger(round)) return res.status(400).json({ error: 'journée invalide' });
+
+  const roundStart = (await get('SELECT MIN(date_utc) AS s FROM matches WHERE round = ?', [round]));
+  if (!roundStart || !roundStart.s) return res.status(400).json({ error: 'journée inconnue' });
+  if (Date.parse(roundStart.s) <= Date.now()) return res.status(400).json({ error: 'journée commencée' });
+
+  if (matchId == null) { // déselection
+    await run('DELETE FROM captain_picks WHERE player_id = ? AND round = ?', [player.id, round]);
+    return res.json({ ok: true, round, matchId: null });
+  }
+  const m = await get('SELECT * FROM matches WHERE id = ?', [matchId]);
+  if (!m || m.round !== round) return res.status(400).json({ error: 'match hors journée' });
+  await run(`
+    INSERT INTO captain_picks (player_id, round, match_id, updated_at) VALUES (?, ?, ?, datetime('now'))
+    ON CONFLICT(player_id, round) DO UPDATE SET match_id = excluded.match_id, updated_at = excluded.updated_at
+  `, [player.id, round, matchId]);
+  res.json({ ok: true, round, matchId });
 }));
 
 // ---------- API admin ----------
