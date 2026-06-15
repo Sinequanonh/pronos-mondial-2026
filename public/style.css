@@ -145,7 +145,7 @@ body[data-view="classement"] #sec-side { display: flex; max-width: 620px; margin
   display: flex; align-items: baseline; gap: 8px;
 }
 .dayhead .n { color: var(--muted); font-weight: 500; font-size: 12px; }
-.day-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 0 22px; }
+.day-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; align-items: start; }
 .pill-ghost {
   margin: 12px; padding: 7px 16px; border-radius: 999px;
   border: 1px solid var(--line2); background: none; color: var(--blue);
@@ -155,12 +155,14 @@ body[data-view="classement"] #sec-side { display: flex; max-width: 620px; margin
 
 /* ---------- item de match (style fiche Google) ---------- */
 .mi-wrap { min-width: 0; }
-.mi { display: flex; align-items: stretch; gap: 12px; padding: 10px 12px; border-top: 1px solid var(--line); border-radius: 10px; }
+/* Vue Matchs : chaque match = un bloc-carte distinct */
+.day-grid .mi-wrap { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
+.mi { display: flex; align-items: stretch; gap: 12px; padding: 12px 14px; }
 .mi.lk { cursor: pointer; }
 .mi.lk:hover { background: var(--surf); }
-.mi-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.mi-meta { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 11.5px; }
-.mi-team { display: flex; align-items: center; gap: 10px; min-height: 27px; }
+.mi-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.mi-meta { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .2px; text-transform: uppercase; }
+.mi-team { display: flex; align-items: center; gap: 10px; min-height: 28px; }
 .mi-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; }
 .mi-team.ph .mi-name { color: var(--muted); font-weight: 400; font-size: 13px; }
 .mi-team.lose .mi-name { color: var(--muted); }
@@ -169,11 +171,11 @@ body[data-view="classement"] #sec-side { display: flex; max-width: 620px; margin
 .mi-sc.mine { color: var(--live); font-size: 13px; font-weight: 700; }
 .mi-sc.dim { color: var(--line2); font-weight: 500; }
 .mi-sc.livec { color: var(--ink); }
-.mi-mine { color: var(--muted); font-size: 11.5px; display: flex; align-items: center; gap: 6px; }
+.mi-mine { color: var(--muted); font-size: 11.5px; display: inline-flex; align-items: center; gap: 6px; margin-top: 3px; align-self: flex-start; background: var(--surf); border-radius: 999px; padding: 2px 9px; }
 .mi-side {
-  flex: none; width: 86px; border-left: 1px solid var(--line);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
-  color: var(--muted); font-size: 12px; text-align: center; padding-left: 6px;
+  flex: none; width: 84px; border-left: 1px solid var(--line);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  color: var(--muted); font-size: 12px; text-align: center; padding-left: 10px;
 }
 .mi-side .live { color: var(--live); font-weight: 700; font-size: 13px; }
 .mi-side .time { color: var(--ink); font-weight: 600; font-size: 13px; }
@@ -181,15 +183,17 @@ body[data-view="classement"] #sec-side { display: flex; max-width: 620px; margin
 
 .who-btn {
   border: 1px solid var(--line); background: var(--surf); color: var(--muted);
-  border-radius: 999px; padding: 1px 9px; font-size: 11px; font-weight: 600; cursor: pointer;
+  border-radius: 999px; padding: 1px 9px; font-size: 11px; font-weight: 600; cursor: pointer; letter-spacing: 0; text-transform: none;
 }
 .who-btn:hover { border-color: var(--line2); color: var(--ink); }
-.who-panel { background: var(--surf); border-radius: 0 0 12px 12px; padding: 8px 14px 9px; font-size: 12.5px; display: flex; flex-direction: column; gap: 4px; }
+/* panneaux dépliés : zone distincte, rattachée au match par un filet du haut */
+.who-panel, .gm-others { background: var(--surf); border-top: 1px solid var(--line); padding: 11px 16px 13px; font-size: 12.5px; display: flex; flex-direction: column; gap: 5px; }
+.who-panel .row { display: flex; align-items: center; gap: 6px; }
 .who-panel .row.done b { font-weight: 700; }
 .who-panel .row.wait { color: var(--muted); }
-.who-note { color: var(--muted); font-size: 11px; margin-top: 4px; border-top: 1px dashed var(--line); padding-top: 6px; }
+.who-note { color: var(--muted); font-size: 11px; margin-top: 5px; border-top: 1px dashed var(--line2); padding-top: 8px; }
 
-.gm-others { background: var(--surf); border-radius: 0 0 12px 12px; padding: 9px 14px 11px; font-size: 12.5px; display: flex; flex-direction: column; gap: 5px; }
+.gm-others { padding-top: 11px; }
 .gm-others .row { display: grid; grid-template-columns: minmax(0, 1fr) auto 30px; align-items: center; column-gap: 14px; }
 .gm-others .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gm-others .sc { font-weight: 700; font-variant-numeric: tabular-nums; display: inline-flex; gap: 4px; justify-content: flex-end; }
@@ -302,8 +306,9 @@ table.standings td.t .nm { overflow: hidden; text-overflow: ellipsis; white-spac
 table.standings td.rkk { color: var(--muted); width: 16px; padding-left: 10px; }
 table.standings td.pts { font-weight: 800; color: var(--ink); }
 table.standings tr.q td { background: color-mix(in srgb, var(--green-soft) 55%, var(--card)); }
+/* Vue Groupes : les matchs sont des lignes séparées par un filet net */
 .gms { border-top: 1px solid var(--line); }
-.gms .mi:first-child { border-top: 0; }
+.gms .mi-wrap + .mi-wrap { border-top: 1px solid var(--line); }
 
 /* ---------- classement joueurs ---------- */
 .board { padding: 6px 10px 14px; }
