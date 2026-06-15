@@ -189,9 +189,12 @@ body[data-view="classement"] #sec-side { display: flex; max-width: 620px; margin
 .who-panel .row.wait { color: var(--muted); }
 .who-note { color: var(--muted); font-size: 11px; margin-top: 4px; border-top: 1px dashed var(--line); padding-top: 6px; }
 
-.gm-others { background: var(--surf); border-radius: 0 0 12px 12px; padding: 8px 14px 10px 14px; font-size: 12.5px; display: flex; flex-direction: column; gap: 4px; }
-.gm-others .row { display: flex; gap: 10px; align-items: center; }
-.gm-others .row b { min-width: 96px; font-weight: 600; }
+.gm-others { background: var(--surf); border-radius: 0 0 12px 12px; padding: 9px 14px 11px; font-size: 12.5px; display: flex; flex-direction: column; gap: 5px; }
+.gm-others .row { display: grid; grid-template-columns: minmax(0, 1fr) auto 30px; align-items: center; column-gap: 14px; }
+.gm-others .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gm-others .sc { font-weight: 700; font-variant-numeric: tabular-nums; display: inline-flex; gap: 4px; justify-content: flex-end; }
+.gm-others .sc i { color: var(--muted); font-style: normal; }
+.gm-others .ch { justify-self: start; }
 
 /* ---------- inputs score ---------- */
 input.bi {

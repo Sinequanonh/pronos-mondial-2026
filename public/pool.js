@@ -409,7 +409,7 @@ function matchItem(m, showStage) {
     : '';
   const othersHtml = expandable
     ? `<div class="gm-others" data-o="${m.id}" hidden>${others.map((o) =>
-        `<div class="row"><b>${esc(o.name)}</b><span>${o.h} – ${o.a}</span>${chipHtml(o.pts)}</div>`).join('')}</div>`
+        `<div class="row"><span class="nm">${esc(o.name)}</span><span class="sc">${o.h}<i>–</i>${o.a}</span><span class="ch">${chipHtml(o.pts)}</span></div>`).join('')}</div>`
     : '';
 
   return `<div class="mi-wrap"><div class="mi ${expandable ? 'lk' : ''}" data-gm="${m.id}" data-pair="${m.id}" ${expandable ? `title="${t('seeAll')}"` : ''}>
