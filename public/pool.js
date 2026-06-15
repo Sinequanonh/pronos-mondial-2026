@@ -112,6 +112,11 @@ const I18N = {
     mvpPts: (p) => `+${p} pt${p > 1 ? 's' : ''}`,
     exactToast: '🎯 Score exact ! Bravo, +3',
     badgesTitle: 'Les badges',
+    settingsTitle: 'Réglages',
+    setLang: 'Langue',
+    setTheme: 'Thème',
+    setThemeLight: 'Clair',
+    setThemeDark: 'Sombre',
     champSaved: (t2) => `🏆 Champion enregistré : ${t2}`,
     champJoinFirst: 'Inscris-toi (bouton « Participer ») pour miser sur ton champion.',
     champNoPick: 'pas de prono',
@@ -221,6 +226,11 @@ const I18N = {
     mvpPts: (p) => `+${p} pt${p > 1 ? 's' : ''}`,
     exactToast: '🎯 Exact score! Nice, +3',
     badgesTitle: 'Badges',
+    settingsTitle: 'Settings',
+    setLang: 'Language',
+    setTheme: 'Theme',
+    setThemeLight: 'Light',
+    setThemeDark: 'Dark',
     champSaved: (t2) => `🏆 Champion saved: ${t2}`,
     champJoinFirst: 'Join the pool ("Join in") to place your champion pick.',
     champNoPick: 'no pick',
@@ -273,8 +283,6 @@ const trReason = (r) => (I18N[LANG].reasons || {})[r] || r;
 let THEME = document.documentElement.dataset.theme || 'light';
 function applyTheme() {
   document.documentElement.dataset.theme = THEME;
-  $('#btn-theme').textContent = THEME === 'dark' ? '☀️' : '🌙';
-  $('#btn-theme').title = THEME === 'dark' ? 'Light mode' : 'Dark mode';
 }
 
 // ---------- données ----------
@@ -1008,7 +1016,7 @@ function applyStatic() {
   $('#t-join-pin').textContent = t('joinPin');
   $('#t-join-go').textContent = t('joinGo');
   $('#j-view').textContent = t('joinView');
-  $('#btn-lang').textContent = LANG === 'fr' ? 'EN' : 'FR';
+  $('#btn-settings').title = t('settingsTitle');
   renderTabs();
   if (S.data) $('#join-title').textContent = t('joinTitle', S.data.pool.name);
 }
@@ -1298,20 +1306,52 @@ $('#j-view').addEventListener('click', () => {
   $('#join').classList.add('hidden');
 });
 
-// ---------- toggles ----------
-$('#btn-lang').addEventListener('click', () => {
-  LANG = LANG === 'fr' ? 'en' : 'fr';
+// ---------- réglages (langue, thème, badges) ----------
+function setLang(lang) {
+  if (lang === LANG) return;
+  LANG = lang;
   localStorage.setItem(LSLANG, LANG);
   makeFormatters();
   applyStatic();
   if (S.data) render();
   if (qpVisible()) openQP();
-});
-
-$('#btn-theme').addEventListener('click', () => {
-  THEME = THEME === 'dark' ? 'light' : 'dark';
+  if (settingsOpen()) renderSettings();
+}
+function setTheme(th) {
+  if (th === THEME) return;
+  THEME = th;
   localStorage.setItem('pronos26:theme', THEME);
   applyTheme();
+  if (settingsOpen()) renderSettings();
+}
+
+const settingsOpen = () => !$('#settings').classList.contains('hidden');
+function renderSettings() {
+  $('#t-settings-h2').textContent = t('settingsTitle');
+  const seg = (cur, opts) => `<div class="set-seg">${opts.map((o) => `<button class="${o.v === cur ? 'on' : ''}" data-set="${o.k}" data-val="${o.v}">${o.label}</button>`).join('')}</div>`;
+  const badgeRows = Object.keys(BADGES).map((k) =>
+    `<div class="set-badge"><span class="chipc">${BADGES[k].emoji}</span><div class="set-badge-txt"><b>${esc(badgeLabel(k))}</b><span>${esc(badgeDesc(k))}</span></div></div>`).join('');
+  $('#settings-body').innerHTML = `
+    <div class="set-section">
+      <div class="set-row"><span>${t('setLang')}</span>${seg(LANG, [{ k: 'lang', v: 'fr', label: 'Français' }, { k: 'lang', v: 'en', label: 'English' }])}</div>
+      <div class="set-row"><span>${t('setTheme')}</span>${seg(THEME, [{ k: 'theme', v: 'light', label: '☀️ ' + t('setThemeLight') }, { k: 'theme', v: 'dark', label: '🌙 ' + t('setThemeDark') }])}</div>
+    </div>
+    <div class="set-section">
+      <h3>${t('badgesTitle')}</h3>
+      <div class="set-badges">${badgeRows}</div>
+    </div>`;
+}
+function openSettings() { renderSettings(); $('#settings').classList.remove('hidden'); }
+function closeSettings() { $('#settings').classList.add('hidden'); }
+
+$('#btn-settings').addEventListener('click', openSettings);
+$('#settings-close').addEventListener('click', closeSettings);
+$('#settings').addEventListener('click', (e) => {
+  if (e.target.id === 'settings') return closeSettings(); // clic sur le fond
+  const b = e.target.closest('[data-set]');
+  if (!b) return;
+  if (b.dataset.set === 'lang') setLang(b.dataset.val);
+  else if (b.dataset.set === 'theme') setTheme(b.dataset.val);
 });
 
 // ---------- boucle ----------
