@@ -781,7 +781,11 @@ function renderBoard() {
   $('#board').innerHTML = mvpHtml + lb.map((r, i) => `
     <div class="board-row ${r.isMe ? 'me' : ''}">
       <span class="rk">${i === 0 && r.pts > 0 ? '👑' : i + 1}</span>
-      <span class="nm"><span class="nm-line"><span class="nm-name">${esc(r.name)}</span>${(r.badges && r.badges.length) ? `<span class="badges">${r.badges.map((b) => `<span class="badge" title="${esc(badgeLabel(b) + ' — ' + badgeDesc(b))}">${BADGES[b] ? BADGES[b].emoji : ''}</span>`).join('')}</span>` : ''}</span><small>${t('exactSub', r.exact, r.outcome)}${r.champ ? ` · 🏆 +${(S.data.champion && S.data.champion.points) || 10}` : ''}</small></span>
+      <span class="nm"><span class="nm-line"><span class="nm-name">${esc(r.name)}</span>${(r.badges && r.badges.length) ? `<span class="badges">${r.badges.map((b) => {
+        const meta = BADGES[b]; if (!meta) return '';
+        const txt = badgeLabel(b) + ' — ' + badgeDesc(b);
+        return `<span class="badge" tabindex="0" aria-label="${esc(txt)}"><span class="be">${meta.emoji}</span><span class="bt"><b>${esc(badgeLabel(b))}</b>${esc(badgeDesc(b))}</span></span>`;
+      }).join('')}</span>` : ''}</span><small>${t('exactSub', r.exact, r.outcome)}${r.champ ? ` · 🏆 +${(S.data.champion && S.data.champion.points) || 10}` : ''}</small></span>
       <span class="pt">${r.pts}<small> pt${r.pts > 1 ? 's' : ''}</small></span>
     </div>`).join('');
 }
@@ -1182,6 +1186,10 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('.champ-dd')) {
     document.querySelectorAll('.champ-dd-panel:not([hidden])').forEach((p) => { p.hidden = true; });
   }
+  // tooltip de badge : tap pour afficher (mobile), ferme les autres
+  const badge = e.target.closest('.board-row .badge');
+  document.querySelectorAll('.board-row .badge.show').forEach((b) => { if (b !== badge) b.classList.remove('show'); });
+  if (badge) { badge.classList.toggle('show'); return; }
   const ddBtn = e.target.closest('[data-champ-dd]');
   if (ddBtn) {
     const panel = ddBtn.parentElement.querySelector('.champ-dd-panel');
