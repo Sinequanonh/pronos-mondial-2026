@@ -752,41 +752,22 @@ document.addEventListener('keydown', (e) => {
 // ---------- classement joueurs ----------
 // ---------- badges rigolos ----------
 const BADGES = {
-  oeil:        { emoji: '🎯', fr: 'Œil de lynx',  en: 'Sharp eye',     dfr: 'a trouvé un score exact',          den: 'nailed an exact score' },
-  nostradamus: { emoji: '🔮', fr: 'Nostradamus',  en: 'Nostradamus',   dfr: '3 scores exacts ou plus',          den: '3+ exact scores' },
-  feu:         { emoji: '🔥', fr: 'En feu',       en: 'On fire',       dfr: '3 bons pronos d\'affilée',          den: '3 correct picks in a row' },
-  bleu:        { emoji: '🇫🇷', fr: 'Cœur bleu',    en: 'True blue',     dfr: 'toujours derrière les Bleus',       den: 'always backs France' },
-  beton:       { emoji: '🧱', fr: 'Bétonneur',    en: 'The wall',      dfr: 'fan des matchs fermés',             den: 'loves low-scoring games' },
-  flambeur:    { emoji: '🎰', fr: 'Le Flambeur',  en: 'High roller',   dfr: 'parie sur les cartons',             den: 'bets on goal fests' },
-  ane:         { emoji: '🪅', fr: 'Bonnet d\'âne', en: 'Wooden spoon',  dfr: 'dernier du classement',             den: 'last place' },
-  fantome:     { emoji: '👻', fr: 'Fantôme',      en: 'No-show',       dfr: 'a zappé tous les matchs joués',     den: 'skipped every played match' },
-  // précision
-  journeeParfaite: { emoji: '💯', fr: 'Journée parfaite', en: 'Perfect day', dfr: 'tous les matchs d\'un jour pile poil', den: 'every match of a day nailed' },
-  francTireur: { emoji: '🎯', fr: 'Le Franc-tireur', en: 'Lone sniper', dfr: 'score exact que personne d\'autre n\'a osé', den: 'exact score nobody else dared' },
-  presque:     { emoji: '😤', fr: 'À un but près', en: 'So close',     dfr: 'le roi du « j\'y étais presque »',  den: 'king of the near-miss' },
-  tacticien:   { emoji: '🧮', fr: 'Le Comptable',  en: 'The accountant', dfr: 'bon nombre de buts, mauvais résultat', den: 'right total, wrong winner' },
-  horloge:     { emoji: '⏱️', fr: 'Horloge suisse', en: 'Clockwork',   dfr: 'jamais un match à 0 point',         den: 'never a blank' },
-  // manies
-  oneNil:      { emoji: '1️⃣', fr: 'Monsieur 1-0',  en: 'The 1-0 merchant', dfr: 'le 1-0, encore et toujours',   den: '1-0, again and again' },
-  mirror:      { emoji: '🪞', fr: 'Le Miroir',     en: 'Mirror mind',   dfr: 'n\'aime que les scores symétriques', den: 'loves symmetrical scores' },
-  fessee:      { emoji: '🍑', fr: 'Roi de la fessée', en: 'Thrashing fan', dfr: 'prédit des raclées à la chaîne', den: 'predicts blowouts non-stop' },
-  optimiste:   { emoji: '🌈', fr: 'L\'Optimiste',  en: 'The optimist',  dfr: 'des pluies de buts à chaque match', den: 'goal fests every time' },
-  rabatjoie:   { emoji: '😴', fr: 'Le Rabat-joie', en: 'The killjoy',   dfr: 'pour lui, le foot c\'est 0-0',      den: 'football is all 0-0' },
-  casanier:    { emoji: '🏟️', fr: 'L\'Avantage du terrain', en: 'The homer', dfr: 'mise quasi toujours sur l\'équipe à domicile', den: 'almost always backs the home side' },
-  // timing
-  buzzer:      { emoji: '⏰', fr: 'Buzzer beater', en: 'Buzzer beater', dfr: 'pronos posés à la dernière seconde', den: 'picks filed at the last second' },
-  leveTot:     { emoji: '🐓', fr: 'Le Lève-tôt',   en: 'The early bird', dfr: 'toujours prêt des jours à l\'avance', den: 'ready days ahead' },
-  nuit:        { emoji: '🦉', fr: 'L\'Oiseau de nuit', en: 'Night owl', dfr: 'pronostique à 3 h du mat',          den: 'predicts at 3 a.m.' },
-  // social
-  mouton:      { emoji: '🐑', fr: 'Le Mouton',     en: 'The sheep',     dfr: 'suit toujours le troupeau',         den: 'always follows the flock' },
-  loup:        { emoji: '🐺', fr: 'Loup solitaire', en: 'Lone wolf',    dfr: 'toujours à contre-courant',          den: 'always against the grain' },
-  contre:      { emoji: '🧭', fr: 'À contre-courant', en: 'Lone dissenter', dfr: 'seul à pronostiquer l\'inverse de tous', den: 'sole pick against everyone' },
-  // champion
-  championPrecoce: { emoji: '🏆', fr: 'Champion day one', en: 'Day-one believer', dfr: 'champion choisi avant le coup d\'envoi', den: 'champion locked before kickoff' },
-  rebelleTitre: { emoji: '🎸', fr: 'Le Rebelle du titre', en: 'Title rebel', dfr: 'seul à croire en son champion',  den: 'sole believer in his champ' },
+  // précision / exploits
+  nostradamus:     { emoji: '🔮', fr: 'Nostradamus',       en: 'Nostradamus',    dfr: '3 scores exacts ou plus',           den: '3+ exact scores' },
+  journeeParfaite: { emoji: '💯', fr: 'Journée parfaite',  en: 'Perfect day',    dfr: 'tous les matchs d\'un jour pile poil', den: 'every match of a day nailed' },
+  francTireur:     { emoji: '🎯', fr: 'Le Franc-tireur',   en: 'Lone sniper',    dfr: 'score exact que personne d\'autre n\'a osé', den: 'exact score nobody else dared' },
+  feu:             { emoji: '🔥', fr: 'En feu',            en: 'On fire',        dfr: '3 bons pronos d\'affilée',          den: '3 correct picks in a row' },
+  presque:         { emoji: '😤', fr: 'À un but près',     en: 'So close',       dfr: 'le roi du « j\'y étais presque »',  den: 'king of the near-miss' },
+  // social & champion
+  contre:          { emoji: '🧭', fr: 'À contre-courant',  en: 'Lone dissenter', dfr: 'seul à pronostiquer l\'inverse de tous', den: 'sole pick against everyone' },
+  rebelleTitre:    { emoji: '🎸', fr: 'Le Rebelle du titre', en: 'Title rebel',  dfr: 'seul à croire en son champion',     den: 'sole believer in his champ' },
+  // style de prono
+  beton:           { emoji: '🧱', fr: 'Bétonneur',         en: 'The wall',       dfr: 'n\'annonce que des matchs fermés',  den: 'only predicts tight games' },
+  flambeur:        { emoji: '🎰', fr: 'Le Flambeur',       en: 'High roller',    dfr: 'n\'annonce que des cartons',        den: 'only predicts goal fests' },
+  bleu:            { emoji: '🇫🇷', fr: 'Cœur bleu',         en: 'True blue',      dfr: 'toujours derrière les Bleus',       den: 'always backs France' },
   // chambrage
-  roiZero:     { emoji: '🥶', fr: 'Roi du 0 point', en: 'Mr. Zero',     dfr: '5 matchs ratés d\'affilée',          den: '5 blanks in a row' },
-  maudit:      { emoji: '💀', fr: 'Le Maudit',     en: 'The cursed',    dfr: 'les équipes qu\'il sacre perdent',   den: 'teams he backs keep losing' },
+  maudit:          { emoji: '💀', fr: 'Le Maudit',         en: 'The cursed',     dfr: 'les équipes qu\'il sacre perdent',  den: 'teams he backs keep losing' },
+  fantome:         { emoji: '👻', fr: 'Fantôme',           en: 'No-show',        dfr: 'a zappé tous les matchs joués',     den: 'skipped every played match' },
 };
 const badgeLabel = (k) => (BADGES[k] ? (LANG === 'fr' ? BADGES[k].fr : BADGES[k].en) : k);
 const badgeDesc = (k) => (BADGES[k] ? (LANG === 'fr' ? BADGES[k].dfr : BADGES[k].den) : '');
@@ -856,6 +837,24 @@ function celebrateExacts() {
   if (fire) { fireConfetti(); toast(t('exactToast')); }
 }
 
+// badges d'un joueur : on n'en montre que 4 (les plus prestigieux d'abord), le reste sous « +N »
+const BADGE_CAP = 4;
+function badgesHtml(list) {
+  const known = (list || []).filter((b) => BADGES[b]);
+  if (!known.length) return '';
+  const chip = (b) => {
+    const txt = badgeLabel(b) + ' — ' + badgeDesc(b);
+    return `<span class="badge" tabindex="0" aria-label="${esc(txt)}"><span class="be">${BADGES[b].emoji}</span><span class="bt"><b>${esc(badgeLabel(b))}</b>${esc(badgeDesc(b))}</span></span>`;
+  };
+  let html = known.slice(0, BADGE_CAP).map(chip).join('');
+  const extra = known.slice(BADGE_CAP);
+  if (extra.length) {
+    const more = extra.map((b) => `${BADGES[b].emoji} ${badgeLabel(b)}`).join('\n');
+    html += `<span class="badge badge-more" tabindex="0" aria-label="${esc(extra.map(badgeLabel).join(', '))}"><span class="be">+${extra.length}</span><span class="bt">${esc(more)}</span></span>`;
+  }
+  return `<span class="badges">${html}</span>`;
+}
+
 function renderBoard() {
   const lb = S.data.leaderboard;
   $('#board-sub').textContent = t('players', lb.length);
@@ -871,11 +870,7 @@ function renderBoard() {
   $('#board').innerHTML = mvpHtml + lb.map((r, i) => `
     <div class="board-row ${r.isMe ? 'me' : ''}">
       <span class="rk ${r.pts > 0 && i < 3 ? 'rk' + (i + 1) : ''}">${medal(i, r.pts)}</span>
-      <span class="nm"><span class="nm-line"><span class="nm-name">${esc(r.name)}</span>${(r.badges && r.badges.length) ? `<span class="badges">${r.badges.map((b) => {
-        const meta = BADGES[b]; if (!meta) return '';
-        const txt = badgeLabel(b) + ' — ' + badgeDesc(b);
-        return `<span class="badge" tabindex="0" aria-label="${esc(txt)}"><span class="be">${meta.emoji}</span><span class="bt"><b>${esc(badgeLabel(b))}</b>${esc(badgeDesc(b))}</span></span>`;
-      }).join('')}</span>` : ''}</span><small>${t('exactSub', r.exact, r.outcome)}${r.champ ? ` · 🏆 +${(S.data.champion && S.data.champion.points) || 10}` : ''}</small></span>
+      <span class="nm"><span class="nm-line"><span class="nm-name">${esc(r.name)}</span>${badgesHtml(r.badges)}</span><small>${t('exactSub', r.exact, r.outcome)}${r.champ ? ` · 🏆 +${(S.data.champion && S.data.champion.points) || 10}` : ''}</small></span>
       <span class="pt">${r.pts}<small> pt${r.pts > 1 ? 's' : ''}</small></span>
     </div>`).join('');
 }
