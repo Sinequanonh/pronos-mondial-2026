@@ -7,6 +7,7 @@ const { sync, SOURCES } = require('./lib/sync');
 const { pollLive } = require('./lib/live');
 const { pointsFor, leaderboard, CHAMPION_POINTS } = require('./lib/scoring');
 const { TEAMS } = require('./lib/teams');
+const { CAPTAIN_ENABLED } = require('./lib/flags');
 
 const PORT = process.env.PORT || 3026;
 const SYNC_EVERY_MS = 30 * 60 * 1000;
@@ -205,7 +206,7 @@ app.get('/api/pool/:token', ah(async (req, res) => {
         name: pr.player_name,
         h: pr.home,
         a: pr.away,
-        cap: (capByMatch.get(pr.match_id) || new Set()).has(pr.player_name),
+        cap: CAPTAIN_ENABLED && (capByMatch.get(pr.match_id) || new Set()).has(pr.player_name),
         pts: m.finished ? pointsFor({ ...m, home_score: m.hs, away_score: m.as }, pr.home, pr.away) : null,
       });
     }
@@ -233,6 +234,7 @@ app.get('/api/pool/:token', ah(async (req, res) => {
   res.json({
     pool: { name: pool.name, lang: pool.lang || 'fr' },
     champion,
+    captainEnabled: CAPTAIN_ENABLED,
     captains: myCaptains,
     me,
     players: (await all('SELECT name FROM players WHERE pool_id = ? ORDER BY name', [pool.id])).map((p) => p.name),
@@ -401,6 +403,7 @@ app.put('/api/pool/:token/champion', ah(async (req, res) => {
 
 // Capitaine : un match doublé par journée (round). Verrouillé au coup d'envoi du 1er match de la journée.
 app.put('/api/pool/:token/captain', ah(async (req, res) => {
+  if (!CAPTAIN_ENABLED) return res.status(403).json({ error: 'Capitaine désactivé' });
   const pool = await get('SELECT * FROM pools WHERE token = ?', [req.params.token]);
   if (!pool) return res.status(404).json({ error: 'Pool introuvable' });
   const player = await get('SELECT * FROM players WHERE key = ?', [req.get('x-player-key') || '']);

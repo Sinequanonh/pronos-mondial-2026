@@ -379,8 +379,9 @@ const ptsChip = (raw, cap) => {
 
 // ---------- capitaine (1 match ×2 par journée/round) ----------
 const roundStarted = (round) => S.roundMin && S.roundMin[round] != null && S.roundMin[round] <= Date.now();
-const myCap = (m) => !!(S.data && S.data.captains && S.data.captains[m.round] === m.id);
-const capSettable = (m) => !!(S.data && S.data.me && !roundStarted(m.round));
+const captainOn = () => !!(S.data && S.data.captainEnabled); // feature flag serveur (cf. lib/flags.js)
+const myCap = (m) => !!(captainOn() && S.data && S.data.captains && S.data.captains[m.round] === m.id);
+const capSettable = (m) => !!(captainOn() && S.data && S.data.me && !roundStarted(m.round));
 
 // ---------- placeholders ----------
 function phLabel(m, side) {
@@ -885,7 +886,7 @@ function renderRules() {
     <span class="dot" style="background:#e8710a"></span>${t('rule1')}<br>
     <span class="dot" style="background:#80868b"></span>${t('rule0')}<br>
     <span class="dot" style="background:#fbbf24"></span>${t('ruleChamp', (S.data.champion && S.data.champion.points) || 10)}<br>
-    <span class="dot" style="background:#fbbf24"></span>${t('ruleCaptain')}<br>
+    ${captainOn() ? `<span class="dot" style="background:#fbbf24"></span>${t('ruleCaptain')}<br>` : ''}
     ${t('ruleKo')}<br><br>
     <b>${t('badgesTitle')}</b>
     <div class="badge-legend">${Object.keys(BADGES).map((k) => `<span class="bl"><span class="be">${BADGES[k].emoji}</span> ${esc(badgeLabel(k))} — <i>${esc(badgeDesc(k))}</i></span>`).join('')}</div>
@@ -1306,8 +1307,8 @@ document.addEventListener('click', (e) => {
   const badge = e.target.closest('.board-row .badge');
   document.querySelectorAll('.board-row .badge.show').forEach((b) => { if (b !== badge) b.classList.remove('show'); });
   if (badge) { badge.classList.toggle('show'); return; }
-  // capitaine : (dé)sélectionne le match doublé de la journée
-  const capBtn = e.target.closest('[data-cap-round]');
+  // capitaine : (dé)sélectionne le match doublé de la journée (no-op si la mécanique est en pause)
+  const capBtn = captainOn() ? e.target.closest('[data-cap-round]') : null;
   if (capBtn) {
     const round = Number(capBtn.dataset.capRound);
     const matchId = Number(capBtn.dataset.capMatch);
