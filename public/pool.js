@@ -58,7 +58,6 @@ const I18N = {
     nextMatch: (vs, rel) => `Prochain match : <b>${vs}</b> ${rel}`,
     over: 'Compétition terminée 🏆',
     liveNow: (s) => s,
-    obTitle: 'Coupe du Monde 2026', obSub: 'Qui sera champion du monde ?',
     today: "Aujourd'hui", tomorrow: 'Demain',
     finished: 'Terminé', liveWord: 'Live',
     showPast: (n) => `Afficher les ${n} jours passés`, hidePast: 'Masquer les jours passés',
@@ -182,7 +181,6 @@ const I18N = {
     nextMatch: (vs, rel) => `Next match: <b>${vs}</b> ${rel}`,
     over: 'Tournament over 🏆',
     liveNow: (s) => s,
-    obTitle: 'World Cup 2026', obSub: 'Who will be world champion?',
     today: 'Today', tomorrow: 'Tomorrow',
     finished: 'FT', liveWord: 'Live',
     showPast: (n) => `Show ${n} past day${n > 1 ? 's' : ''}`, hidePast: 'Hide past days',
@@ -1026,7 +1024,6 @@ function hfCountdown(d) {
 function renderFranceHero() {
   const el = $('#hero-fr');
   if (!el || !S.data) return;
-  if (localStorage.getItem('pronos26:hero') === 'off') { el.hidden = true; return; }
 
   const frMatches = S.data.matches.filter((m) => m.home === 'France' || m.away === 'France');
   const live = frMatches.find((m) => isLive(m));
@@ -1077,33 +1074,9 @@ function renderFranceHero() {
   el.hidden = false;
   const echo = Array.from({ length: 7 }, () => '<span>TOUS DERRIÈRE LES BLEUS&nbsp;!</span>').join('');
   el.innerHTML = `
-    <button class="hf-x" data-hf-close title="${LANG === 'fr' ? 'Masquer la bannière' : 'Hide banner'}">✕</button>
     <div class="hf-echo" aria-hidden="true">${echo}</div>
     <div class="hf-ball" aria-hidden="true">⚽</div>
     ${card}`;
-}
-
-// Cercle de drapeaux qui tourne (façon Polymarket) — les drapeaux restent droits en orbitant.
-function flagOrbit() {
-  const names = ['France', 'Brazil', 'Argentina', 'Spain', 'England', 'Germany', 'Portugal', 'Netherlands', 'Belgium', 'Morocco'];
-  const codes = names.map((n) => (S.data.teams[n] || {}).code).filter(Boolean);
-  const n = codes.length || 1;
-  const items = codes.map((c, i) =>
-    `<span class="it" style="--a:${(i * 360 / n).toFixed(2)}deg"><span class="up"><img src="https://flagcdn.com/h40/${c}.png" srcset="https://flagcdn.com/h80/${c}.png 2x" alt="" loading="lazy"></span></span>`).join('');
-  return `<div class="flag-orbit" aria-hidden="true"><div class="flag-orbit-spin">${items}</div></div>`;
-}
-
-// Bannière déco permanente : titre + cercle de drapeaux qui tourne (façon Polymarket).
-function renderOrbitBanner() {
-  const el = $('#orbit-banner');
-  if (!el || !S.data || !S.data.teams) return;
-  el.hidden = false;
-  el.innerHTML = `
-    ${flagOrbit()}
-    <div class="ob-txt">
-      <div class="ob-title">${t('obTitle')}</div>
-      <div class="ob-sub">${t('obSub')}</div>
-    </div>`;
 }
 
 setInterval(() => {
@@ -1142,7 +1115,6 @@ function render() {
     if (S.roundMin[m.round] == null || d < S.roundMin[m.round]) S.roundMin[m.round] = d;
   }
   renderHeader();
-  renderOrbitBanner();
   renderFranceHero();
   renderMatchs();
   renderBracket();
@@ -1353,11 +1325,6 @@ document.addEventListener('click', (e) => {
   if (mi && !e.target.closest('input')) {
     const panel = document.querySelector(`.gm-others[data-o="${mi.dataset.gm}"]`);
     if (panel) panel.hidden = !panel.hidden;
-    return;
-  }
-  if (e.target.closest('[data-hf-close]')) {
-    localStorage.setItem('pronos26:hero', 'off');
-    $('#hero-fr').hidden = true;
     return;
   }
   if (e.target.closest('[data-hf-go]')) { switchView('matchs'); return; }
