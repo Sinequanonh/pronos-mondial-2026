@@ -481,6 +481,25 @@ app.patch('/api/admin/players/:id', admin, ah(async (req, res) => {
   res.json({ ok: true, name, pin: !!pinHash });
 }));
 
+// Admin : (re)poser/retirer le prono champion d'un joueur — exception manuelle, ignore le verrou de date.
+// Body { team: "<clé TEAMS>" } pour poser, { team: null } pour retirer.
+app.put('/api/admin/players/:id/champion', admin, ah(async (req, res) => {
+  const id = Number(req.params.id);
+  const player = await get('SELECT * FROM players WHERE id = ?', [id]);
+  if (!player) return res.status(404).json({ error: 'Joueur introuvable' });
+  const team = req.body.team == null ? null : String(req.body.team);
+  if (team === null) {
+    await run('DELETE FROM champion_picks WHERE player_id = ?', [id]);
+    return res.json({ ok: true, team: null });
+  }
+  if (!TEAMS[team]) return res.status(400).json({ error: 'équipe inconnue' });
+  await run(`
+    INSERT INTO champion_picks (player_id, team, updated_at) VALUES (?, ?, datetime('now'))
+    ON CONFLICT(player_id) DO UPDATE SET team = excluded.team, updated_at = excluded.updated_at
+  `, [id, team]);
+  res.json({ ok: true, team });
+}));
+
 app.delete('/api/admin/players/:id', admin, ah(async (req, res) => {
   const id = Number(req.params.id);
   const player = await get('SELECT * FROM players WHERE id = ?', [id]);
