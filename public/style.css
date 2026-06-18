@@ -335,7 +335,7 @@ table.standings tr.q td { background: color-mix(in srgb, var(--green-soft) 55%, 
 /* ---------- classement joueurs ---------- */
 .board { padding: 6px 10px 14px; }
 .board-row {
-  display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 8px; align-items: center;
+  display: grid; grid-template-columns: 30px auto minmax(0, 1fr) auto; gap: 8px; align-items: center;
   padding: 8px 8px; border-radius: 12px; font-size: 14px;
 }
 .board-row .rk { width: 26px; height: 26px; border-radius: 50%; background: var(--surf); color: var(--muted); font-size: 11.5px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
@@ -343,6 +343,20 @@ table.standings tr.q td { background: color-mix(in srgb, var(--green-soft) 55%, 
 .board-row .rk.rk2 { background: color-mix(in srgb, #9ca3af 22%, var(--card)); }
 .board-row .rk.rk3 { background: color-mix(in srgb, #b45309 22%, var(--card)); }
 .board-row .nm { font-weight: 600; min-width: 0; }
+.board-row .avatar { width: 30px; height: 30px; }
+
+/* ---- avatars (photo de profil devant le nom) ---- */
+.avatar {
+  flex: none; width: 22px; height: 22px; border-radius: 50%; object-fit: cover;
+  display: inline-flex; align-items: center; justify-content: center;
+  vertical-align: middle; background: var(--surf); overflow: hidden;
+}
+.avatar.mono {
+  background: hsl(var(--mh, 220) 52% 48%); color: #fff;
+  font-size: .62em; font-weight: 800; line-height: 1; text-transform: uppercase;
+}
+.gm-others .row .nm { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.champ-row .champ-player { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .board-row .nm-line { display: flex; align-items: center; gap: 5px; min-width: 0; }
 .board-row .nm-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .board-row .badges { flex: none; display: inline-flex; gap: 4px; }

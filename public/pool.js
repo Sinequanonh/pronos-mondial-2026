@@ -323,6 +323,16 @@ const LIVE_DOT = '<span class="live-dot" aria-hidden="true"></span>';
 const flagImg = (code, cls = 'fl') =>
   `<img class="${cls}" src="https://flagcdn.com/${cls.includes('big') ? 'h80' : 'h40'}/${code}.png" alt="" loading="lazy">`;
 
+// ---------- avatars (photo de profil devant le nom) ----------
+// teinte stable dérivée du nom, pour le monogramme de secours quand pas de photo
+const monoHue = (name) => { let h = 0; const s = String(name || ''); for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; };
+function avatarHtml(name, cls = '') {
+  const url = (S.data && S.data.avatars && S.data.avatars[name]) || null;
+  if (url) return `<img class="avatar ${cls}" src="${esc(url)}" alt="" loading="lazy">`;
+  const initial = String(name || '?').trim().charAt(0).toUpperCase() || '?';
+  return `<span class="avatar mono ${cls}" style="--mh:${monoHue(name)}" aria-hidden="true">${esc(initial)}</span>`;
+}
+
 // ---------- formats dates ----------
 let fDay, fTime, fShort, fLong;
 function makeFormatters() {
@@ -442,8 +452,8 @@ function matchItem(m, showStage) {
     : myCap(m) ? `<span class="cap-badge" title="${t('captainTip')}">⭐×2</span>` : '';
   const whoHtml = !m.locked && S.data.players.length
     ? `<div class="who-panel">
-        ${pickersList.map((n) => `<div class="row done">✓ <b>${esc(n)}</b></div>`).join('')}
-        ${S.data.players.filter((p) => !pickersList.includes(p)).map((n) => `<div class="row wait">⏳ ${esc(n)}</div>`).join('')}
+        ${pickersList.map((n) => `<div class="row done">✓ ${avatarHtml(n)}<b>${esc(n)}</b></div>`).join('')}
+        ${S.data.players.filter((p) => !pickersList.includes(p)).map((n) => `<div class="row wait">⏳ ${avatarHtml(n)}${esc(n)}</div>`).join('')}
       </div>`
     : '';
   const teamRow = (side) => {
@@ -460,7 +470,7 @@ function matchItem(m, showStage) {
     : '';
   const othersHtml = expandable
     ? `<div class="gm-others" data-o="${m.id}" hidden>${others.map((o) =>
-        `<div class="row ${o.cap ? 'cap' : ''}"><span class="nm">${o.cap ? '⭐ ' : ''}${esc(o.name)}</span><span class="sc">${o.h}<i>–</i>${o.a}</span><span class="ch">${ptsChip(o.pts, o.cap)}</span></div>`).join('')}</div>`
+        `<div class="row ${o.cap ? 'cap' : ''}"><span class="nm">${avatarHtml(o.name)}${o.cap ? '⭐ ' : ''}${esc(o.name)}</span><span class="sc">${o.h}<i>–</i>${o.a}</span><span class="ch">${ptsChip(o.pts, o.cap)}</span></div>`).join('')}</div>`
     : '';
 
   return `<div class="mi-wrap ${myCap(m) ? 'is-cap' : ''}"><div class="mi ${expandable ? 'lk' : ''}" data-gm="${m.id}" data-pair="${m.id}" ${expandable ? `title="${t('seeAll')}"` : ''}>
@@ -664,8 +674,8 @@ function renderChampion() {
     }
     const picked = new Set(c.pickers || []);
     const whoRows = (S.data.players || []).map((name) => picked.has(name)
-      ? `<div class="row done">✓ <b>${esc(name)}</b></div>`
-      : `<div class="row wait">⏳ ${esc(name)}</div>`).join('');
+      ? `<div class="row done">✓ ${avatarHtml(name)}<b>${esc(name)}</b></div>`
+      : `<div class="row wait">⏳ ${avatarHtml(name)}${esc(name)}</div>`).join('');
     html += `<div class="champ-note">${t('champPoints', c.points || 10)}</div>
              <div class="champ-note">⏳ ${t('champDeadline', cap1(fmtDay(dd)), fmtTime(dd))}</div>
              <div class="champ-who">${whoRows}<div class="who-note">🔒 ${t('champWhoHidden')}</div></div>`;
@@ -678,7 +688,7 @@ function renderChampion() {
       return `<div class="champ-row ${hit ? 'hit' : ''}">
         ${tm ? flagImg(tm.code) : '<span class="fl ph">–</span>'}
         <span class="champ-team">${tm ? esc(tNm(tm)) : `<i>${t('champNoPick')}</i>`}</span>
-        <span class="champ-player">${esc(name)}</span>
+        <span class="champ-player">${avatarHtml(name)}${esc(name)}</span>
         ${hit ? `<span class="chip c3">${t('champRight')}</span>` : ''}
       </div>`;
     }).join('');
@@ -871,6 +881,7 @@ function renderBoard() {
   $('#board').innerHTML = mvpHtml + lb.map((r, i) => `
     <div class="board-row ${r.isMe ? 'me' : ''}">
       <span class="rk ${r.pts > 0 && i < 3 ? 'rk' + (i + 1) : ''}">${medal(i, r.pts)}</span>
+      ${avatarHtml(r.name)}
       <span class="nm"><span class="nm-line"><span class="nm-name">${esc(r.name)}</span>${badgesHtml(r.badges)}</span><small>${t('exactSub', r.exact, r.outcome)}${r.champ ? ` · 🏆 +${(S.data.champion && S.data.champion.points) || 10}` : ''}</small></span>
       <span class="pt">${r.pts}<small> pt${r.pts > 1 ? 's' : ''}</small></span>
     </div>`).join('');
@@ -923,7 +934,7 @@ function renderHeader() {
   const u = $('#h-user');
   if (S.data.me) {
     const row = S.data.leaderboard.find((r) => r.isMe);
-    u.innerHTML = `<span class="userchip">👤 ${esc(S.data.me.name)} · ${t('pts', row ? row.pts : 0)}
+    u.innerHTML = `<span class="userchip">${avatarHtml(S.data.me.name)} ${esc(S.data.me.name)} · ${t('pts', row ? row.pts : 0)}
       <button id="btn-switch">${t('switch')}</button></span>`;
   } else {
     u.innerHTML = `<span class="userchip"><button id="btn-join2" style="font-size:13px">${t('join')}</button></span>`;

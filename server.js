@@ -231,9 +231,17 @@ app.get('/api/pool/:token', ah(async (req, res) => {
       : null,
   };
 
+  // photos de profil : on n'expose qu'une petite map nom -> URL versionnée (l'image est servie à part, cachée)
+  const avatarRows = await all('SELECT id, name, avatar FROM players WHERE pool_id = ?', [pool.id]);
+  const avatars = {};
+  for (const r of avatarRows) {
+    if (r.avatar) avatars[r.name] = `/api/avatar/${r.id}?v=${crypto.createHash('sha1').update(r.avatar).digest('hex').slice(0, 8)}`;
+  }
+
   res.json({
     pool: { name: pool.name, lang: pool.lang || 'fr' },
     champion,
+    avatars,
     captainEnabled: CAPTAIN_ENABLED,
     captains: myCaptains,
     me,
@@ -430,6 +438,17 @@ app.put('/api/pool/:token/captain', ah(async (req, res) => {
   res.json({ ok: true, round, matchId });
 }));
 
+// Photo de profil d'un joueur. Stockée en base en data URL ; servie en binaire + cache long
+// (l'URL est versionnée côté payload, donc on peut cacher agressivement).
+app.get('/api/avatar/:id', ah(async (req, res) => {
+  const row = await get('SELECT avatar FROM players WHERE id = ?', [Number(req.params.id)]);
+  const m = row && row.avatar && /^data:(image\/[a-z.+-]+);base64,(.+)$/i.exec(row.avatar);
+  if (!m) return res.status(404).end();
+  res.set('Content-Type', m[1]);
+  res.set('Cache-Control', 'public, max-age=31536000, immutable');
+  res.send(Buffer.from(m[2], 'base64'));
+}));
+
 // ---------- API admin ----------
 // Accès : session Google (cookie) ou clé API en en-tête (scripts/CLI). Jamais via ?key= (fuite d'URL).
 function admin(req, res, next) {
@@ -498,6 +517,20 @@ app.put('/api/admin/players/:id/champion', admin, ah(async (req, res) => {
     ON CONFLICT(player_id) DO UPDATE SET team = excluded.team, updated_at = excluded.updated_at
   `, [id, team]);
   res.json({ ok: true, team });
+}));
+
+// Admin : poser/retirer la photo de profil d'un joueur.
+// Body { dataUrl: "data:image/...;base64,..." } pour poser, { dataUrl: null } pour retirer.
+app.put('/api/admin/players/:id/avatar', admin, ah(async (req, res) => {
+  const id = Number(req.params.id);
+  const player = await get('SELECT * FROM players WHERE id = ?', [id]);
+  if (!player) return res.status(404).json({ error: 'Joueur introuvable' });
+  const dataUrl = req.body.dataUrl == null ? null : String(req.body.dataUrl);
+  if (dataUrl !== null && !/^data:image\/[a-z.+-]+;base64,.+/i.test(dataUrl)) {
+    return res.status(400).json({ error: 'dataUrl image attendue' });
+  }
+  await run('UPDATE players SET avatar = ? WHERE id = ?', [dataUrl, id]);
+  res.json({ ok: true, hasAvatar: dataUrl !== null });
 }));
 
 app.delete('/api/admin/players/:id', admin, ah(async (req, res) => {
