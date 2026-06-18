@@ -473,7 +473,6 @@ table.standings tr.q td { background: color-mix(in srgb, var(--green-soft) 55%, 
     radial-gradient(720px 320px at 88% -30%, rgba(37, 99, 235, .55), transparent 65%),
     radial-gradient(620px 300px at 8% 130%, rgba(30, 58, 138, .65), transparent 60%),
     linear-gradient(115deg, #b91c1c 0%, #9f1239 32%, #6d28d9 66%, #1d4ed8 100%);
-  border: 1px solid rgba(255, 255, 255, .14);
   color: #fff;
 }
 .hf-echo {
