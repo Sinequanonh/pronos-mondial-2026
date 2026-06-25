@@ -533,6 +533,25 @@ app.put('/api/admin/players/:id/avatar', admin, ah(async (req, res) => {
   res.json({ ok: true, hasAvatar: dataUrl !== null });
 }));
 
+// Admin : forcer/corriger un prono d'un joueur sur un match — exception manuelle, ignore le verrou
+// du coup d'envoi (utile pour rattraper un prono « oublié »). Body { matchId, home, away }.
+app.put('/api/admin/players/:id/prediction', admin, ah(async (req, res) => {
+  const id = Number(req.params.id);
+  const player = await get('SELECT * FROM players WHERE id = ?', [id]);
+  if (!player) return res.status(404).json({ error: 'Joueur introuvable' });
+  const m = await get('SELECT * FROM matches WHERE id = ?', [Number(req.body.matchId)]);
+  if (!m) return res.status(404).json({ error: 'Match introuvable' });
+  const h = Number(req.body.home), a = Number(req.body.away);
+  if (!Number.isInteger(h) || !Number.isInteger(a) || h < 0 || a < 0 || h > 30 || a > 30) {
+    return res.status(400).json({ error: 'score invalide' });
+  }
+  await run(`INSERT INTO predictions (player_id, match_id, home, away, updated_at)
+             VALUES (?, ?, ?, ?, datetime('now'))
+             ON CONFLICT(player_id, match_id) DO UPDATE SET home = excluded.home, away = excluded.away, updated_at = excluded.updated_at`,
+            [id, m.id, h, a]);
+  res.json({ ok: true, matchId: m.id, home: h, away: a });
+}));
+
 app.delete('/api/admin/players/:id', admin, ah(async (req, res) => {
   const id = Number(req.params.id);
   const player = await get('SELECT * FROM players WHERE id = ?', [id]);
