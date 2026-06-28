@@ -73,7 +73,7 @@ const I18N = {
     rule3: '<b>3 pts</b> — score exact',
     rule1: '<b>1 pt</b> — bon résultat (vainqueur ou nul)',
     rule0: '<b>0 pt</b> — raté 😬',
-    ruleKo: "En élimination directe, le « bon résultat », c'est l'équipe qui se qualifie. Les pronos se verrouillent au coup d'envoi 🔒",
+    ruleKo: "En élimination directe, on compte comme en poules — score, vainqueur ou nul (les tirs au but ne comptent pas : un match aux tab reste un nul). Les pronos se verrouillent au coup d'envoi 🔒",
     myCount: (m, o) => `Tu as pronostiqué <b>${m}</b> match${m > 1 ? 's' : ''} · <b>${o}</b> encore ouvert${o > 1 ? 's' : ''}.`,
     syncInfo: (ago) => `Scores en direct pendant les matchs · dernière synchro ${ago}`,
     agoNow: "à l'instant", agoMin: (m) => `il y a ${m} min`, agoH: (h, m) => `il y a ${h} h${m}`,
@@ -90,7 +90,6 @@ const I18N = {
     saved: (n) => `✓ ${n} prono${n > 1 ? 's' : ''} enregistré${n > 1 ? 's' : ''}`,
     sessionLost: 'Session perdue — re-choisis ton pseudo',
     offline: 'Hors ligne ? Réessaie dans un instant',
-    noDraw: 'Pas de match nul en élimination directe 😉',
     confirmSwitch: 'Changer de pseudo ? (les pronos déjà faits restent liés à l\'ancien pseudo)',
     seeAll: 'Voir les pronos de tout le monde',
     invalidLink: 'Lien invalide 😕',
@@ -144,7 +143,6 @@ const I18N = {
       'match commencé': 'match commencé',
       'équipes pas encore connues': 'équipes pas encore connues',
       'score invalide': 'score invalide',
-      'pas de nul en élimination directe': 'pas de nul en élimination directe',
       'Pseudo entre 2 et 20 caractères': 'Pseudo entre 2 et 20 caractères',
       'PIN : 3 à 6 chiffres': 'PIN : 3 à 6 chiffres',
       'prono champion verrouillé': 'prono champion verrouillé',
@@ -196,7 +194,7 @@ const I18N = {
     rule3: '<b>3 pts</b> — exact score',
     rule1: '<b>1 pt</b> — correct result (winner or draw)',
     rule0: '<b>0 pts</b> — missed 😬',
-    ruleKo: 'In the knockout rounds, a “correct result” means picking the team that goes through. Picks lock at kickoff 🔒',
+    ruleKo: 'In the knockout rounds, scoring works like the group stage — score, winner or draw (penalty shootouts don\'t count: a match decided on penalties stays a draw). Picks lock at kickoff 🔒',
     myCount: (m, o) => `You've predicted <b>${m}</b> match${m > 1 ? 'es' : ''} · <b>${o}</b> still open.`,
     syncInfo: (ago) => `Live scores during matches · last sync ${ago}`,
     agoNow: 'just now', agoMin: (m) => `${m} min ago`, agoH: (h, m) => `${h}h${m} ago`,
@@ -213,7 +211,6 @@ const I18N = {
     saved: (n) => `✓ ${n} pick${n > 1 ? 's' : ''} saved`,
     sessionLost: 'Session lost — pick your nickname again',
     offline: 'Offline? Try again in a moment',
-    noDraw: 'No draws in knockout games 😉',
     confirmSwitch: 'Switch nickname? (picks already made stay with the old nickname)',
     seeAll: "See everyone's picks",
     invalidLink: 'Invalid link 😕',
@@ -267,7 +264,6 @@ const I18N = {
       'match commencé': 'match already started',
       'équipes pas encore connues': 'teams not known yet',
       'score invalide': 'invalid score',
-      'pas de nul en élimination directe': 'no draws in knockout games',
       'Pseudo entre 2 et 20 caractères': 'Nickname must be 2–20 characters',
       'PIN : 3 à 6 chiffres': 'PIN: 3–6 digits',
       'prono champion verrouillé': 'champion pick is locked',
@@ -370,11 +366,8 @@ function actualAdvancer(m) {
 function ptsOf(m, pred) {
   if (!m.finished || !pred) return null;
   const [ph, pa] = pred;
-  if (ph === m.hs && pa === m.as) return 3;
-  if (m.stage === 'group') return Math.sign(ph - pa) === Math.sign(m.hs - m.as) ? 1 : 0;
-  const predAdv = ph > pa ? m.home : ph < pa ? m.away : null;
-  const actAdv = actualAdvancer(m);
-  return predAdv && actAdv && predAdv === actAdv ? 1 : 0;
+  if (ph === m.hs && pa === m.as) return 3;                       // score exact
+  return Math.sign(ph - pa) === Math.sign(m.hs - m.as) ? 1 : 0;   // bon résultat (nul/vainqueur), TAB ignorés
 }
 const chipHtml = (pts) =>
   pts == null ? '' : `<span class="chip c${pts}">${pts > 0 ? '+' + pts : '0'}</span>`;
@@ -404,10 +397,9 @@ function phLabel(m, side) {
 }
 
 function winCls(m, side) {
-  if (!m.finished) return '';
-  const adv = m.stage === 'group' ? (m.hs === m.as ? null : m.hs > m.as ? m.home : m.away) : actualAdvancer(m);
-  if (!adv) return '';
-  return adv === (side === 'h' ? m.home : m.away) ? 'win' : 'lose';
+  if (!m.finished || m.hs === m.as) return ''; // nul (TAB inclus) : pas de surlignage
+  const winner = m.hs > m.as ? m.home : m.away;
+  return winner === (side === 'h' ? m.home : m.away) ? 'win' : 'lose';
 }
 
 // ---------- item de match (style fiche Google) ----------
@@ -1267,9 +1259,6 @@ document.addEventListener('input', (e) => {
   const h = hEl.value === '' ? null : Number(hEl.value);
   const a = aEl.value === '' ? null : Number(aEl.value);
   const valid = Number.isInteger(h) && Number.isInteger(a) && h >= 0 && a >= 0 && h <= 30 && a <= 30;
-  const koDraw = valid && m.stage !== 'group' && h === a;
-  [hEl, aEl].forEach((x) => x.classList.toggle('bad', koDraw));
-  if (koDraw) { S.dirty.delete(mid); persistPending(); toast(t('noDraw'), true); return; }
   if (valid) { S.dirty.set(mid, [h, a]); persistPending(); setSaveStatus('pending'); scheduleSave(); }
   else { S.dirty.delete(mid); persistPending(); }
 });

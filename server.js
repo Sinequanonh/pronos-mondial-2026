@@ -303,7 +303,6 @@ app.put('/api/pool/:token/predictions', ah(async (req, res) => {
     else if (locked(m)) reason = 'match commencé';
     else if (!TEAMS[m.home] || !TEAMS[m.away]) reason = 'équipes pas encore connues';
     else if (!Number.isInteger(h) || !Number.isInteger(a) || h < 0 || a < 0 || h > 30 || a > 30) reason = 'score invalide';
-    else if (m.stage !== 'group' && h === a) reason = 'pas de nul en élimination directe';
     if (reason) { rejected.push({ m: pick.m, reason }); continue; }
     stmts.push({
       sql: `INSERT INTO predictions (player_id, match_id, home, away, updated_at)

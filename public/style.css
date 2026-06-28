@@ -230,7 +230,6 @@ input.bi {
 }
 input.bi::-webkit-outer-spin-button, input.bi::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 input.bi:focus { outline: none; border-color: var(--blue); }
-input.bi.bad { border-color: var(--red); }
 
 /* ---------- drapeaux / chips ---------- */
 .fl { width: 22px; height: 15px; object-fit: cover; border-radius: 3px; box-shadow: 0 0 0 1px rgba(128, 128, 128, .25); flex: none; }
