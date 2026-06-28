@@ -58,7 +58,7 @@ const I18N = {
     nextMatch: (vs, rel) => `Prochain match : <b>${vs}</b> ${rel}`,
     over: 'Compétition terminée 🏆',
     liveNow: (s) => s,
-    today: "Aujourd'hui", tomorrow: 'Demain',
+    today: "Aujourd'hui", tomorrow: 'Demain', yesterday: 'Hier',
     finished: 'Terminé', liveWord: 'Live',
     showPast: (n) => `Afficher les ${n} jours passés`, hidePast: 'Masquer les jours passés',
     imminent: 'imminent',
@@ -181,7 +181,7 @@ const I18N = {
     nextMatch: (vs, rel) => `Next match: <b>${vs}</b> ${rel}`,
     over: 'Tournament over 🏆',
     liveNow: (s) => s,
-    today: 'Today', tomorrow: 'Tomorrow',
+    today: 'Today', tomorrow: 'Tomorrow', yesterday: 'Yesterday',
     finished: 'FT', liveWord: 'Live',
     showPast: (n) => `Show ${n} past day${n > 1 ? 's' : ''}`, hidePast: 'Hide past days',
     imminent: 'kicking off',
@@ -492,15 +492,19 @@ function renderMatchs() {
     cur.items.push(m);
   }
   const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
-  const isPast = (day) => { const d = new Date(day.date); d.setHours(0, 0, 0, 0); return d < startToday; };
+  // par défaut on garde aussi la veille visible ; le bouton ne masque que les jours d'avant
+  const startYesterday = new Date(startToday); startYesterday.setDate(startYesterday.getDate() - 1);
+  const isPast = (day) => { const d = new Date(day.date); d.setHours(0, 0, 0, 0); return d < startYesterday; };
   const pastDays = days.filter(isPast);
   const visible = S.showPast ? days : days.filter((d) => !isPast(d));
   const todayK = dayKeyOf(Date.now());
   const tomorrowK = dayKeyOf(Date.now() + 86400000);
+  const yesterdayK = dayKeyOf(Date.now() - 86400000);
 
   const dayLabel = (d) =>
     d.k === todayK ? `${t('today')} · ${fmtLong(d.date)}`
       : d.k === tomorrowK ? `${t('tomorrow')} · ${fmtLong(d.date)}`
+      : d.k === yesterdayK ? `${t('yesterday')} · ${fmtLong(d.date)}`
       : fmtLong(d.date);
 
   $('#daylist').innerHTML =
