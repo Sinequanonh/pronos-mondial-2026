@@ -17,7 +17,7 @@ const S = {
   retry: 0,           // compteur de backoff
   lastInput: 0,       // horodatage de la dernière frappe (anti-clobber du poll)
   showPast: false,
-  bktCentered: false,
+  rbktSel: null,      // match sélectionné dans le tableau radial
   view: (() => {
     const v = localStorage.getItem('pronos26:view');
     if (VIEWS.includes(v)) return v;
@@ -52,6 +52,9 @@ const I18N = {
     mdGroup: (n) => `Phase de groupes · Journée ${n} sur 3`,
     finalCap: 'Finale · 19 juillet',
     thirdCap: 'Petite finale · 18 juillet',
+    rbktTip: 'Touchez une équipe pour pronostiquer son match',
+    rbktThird: 'Petite finale',
+    rbktBack: '← Tableau',
     champ: '🏆 Champion', champWorld: 'Champion du monde', champYours: 'Ton champion', champTbd: 'à toi de le prédire…',
     ph1: (g) => `1ᵉʳ gr. ${g}`, ph2: (g) => `2ᵉ gr. ${g}`, ph3: (l) => `3ᵉ ${l}`,
     phW: (n) => `Vainq. m${n}`, phL: (n) => `Perd. m${n}`,
@@ -173,6 +176,9 @@ const I18N = {
     mdGroup: (n) => `Group stage · Matchday ${n} of 3`,
     finalCap: 'Final · July 19',
     thirdCap: 'Third place · July 18',
+    rbktTip: 'Tap a team to predict its match',
+    rbktThird: 'Third place',
+    rbktBack: '← Bracket',
     champ: '🏆 Champion', champWorld: 'World champions', champYours: 'Your pick', champTbd: 'make your pick…',
     ph1: (g) => `1st gr. ${g}`, ph2: (g) => `2nd gr. ${g}`, ph3: (l) => `3rd ${l}`,
     phW: (n) => `W m${n}`, phL: (n) => `L m${n}`,
@@ -506,48 +512,7 @@ function renderMatchs() {
       <div class="day-grid">${d.items.map((m) => matchItem(m, true)).join('')}</div>`).join('');
 }
 
-// ---------- arbre ----------
-function bmRow(m, side) {
-  const name = side === 'h' ? m.home : m.away;
-  const tm = team(name);
-  const flag = tm ? flagImg(tm.code) : '<span class="fl ph">?</span>';
-  const label = tm
-    ? `<span class="tn" title="${esc(tNm(tm))}">${tm.tri}</span>`
-    : `<span class="tn">${esc(phLabel(m, side))}</span>`;
-  const pred = myPick(m.id);
-  let cell;
-  if (m.finished) cell = `<span class="sc">${side === 'h' ? m.hs : m.as}</span>`;
-  else if (hasLiveScore(m)) cell = `<span class="sc live">${side === 'h' ? m.lhs : m.las}</span>`;
-  else if (canEdit(m)) {
-    const pend = S.dirty.get(m.id);
-    const v = pend ? pend[side === 'h' ? 0 : 1] : pred ? pred[side === 'h' ? 0 : 1] : '';
-    cell = `<input class="bi" data-m="${m.id}" data-s="${side}" type="number" min="0" max="30" inputmode="numeric" value="${v}">`;
-  } else if (pred) cell = `<span class="sc mine">${pred[side === 'h' ? 0 : 1]}</span>`;
-  else cell = '<span class="sc dim">·</span>';
-  return `<div class="bm-row ${tm ? '' : 'ph'} ${winCls(m, side)}">${flag}${label}${cell}</div>`;
-}
-
-function bmCard(id, cls = '') {
-  const m = M(id);
-  if (!m) return '';
-  const pred = myPick(id);
-  const chip = m.finished && pred ? chipHtml(ptsOf(m, pred)) : '';
-  const right = isLive(m)
-    ? `<span class="gm-live">${LIVE_DOT}${esc(m.lmin || 'LIVE')}</span>`
-    : esc((m.loc || '').replace(' Stadium', ''));
-  return `<div class="bm ${m.finished ? 'done' : ''} ${cls}" data-m="${id}" data-pair="${id}">${chip}
-    ${bmRow(m, 'h')}${bmRow(m, 'a')}
-    <div class="bm-meta"><span>${fmtMeta(m.date)}</span><span>${right}</span></div>
-  </div>`;
-}
-
-function bcol(ids, capTxt) {
-  let duos = '';
-  if (ids.length === 1) duos = `<div class="duo solo">${bmCard(ids[0])}</div>`;
-  else for (let i = 0; i < ids.length; i += 2) duos += `<div class="duo">${bmCard(ids[i])}${bmCard(ids[i + 1])}</div>`;
-  return `<div class="bcol"><div class="bcap">${capTxt}</div><div class="bbody">${duos}</div></div>`;
-}
-
+// ---------- tableau radial (roue, inspiré de glaze/saj) ----------
 function champHtml() {
   const fin = M(104);
   const adv = fin ? actualAdvancer(fin) : null;
@@ -562,26 +527,132 @@ function champHtml() {
   return `<div class="champ"><div class="t">🏆 ${sub}</div>${tm ? flagImg(tm.code, 'fl big') : ''}<div class="n">${esc(tm ? tNm(tm) : name)}</div></div>`;
 }
 
-function centerBracket() {
-  const sc = $('.bkt-scroll');
-  if (sc && sc.clientWidth > 0 && sc.scrollWidth > sc.clientWidth) {
-    sc.scrollLeft = (sc.scrollWidth - sc.clientWidth) / 2;
-    S.bktCentered = true;
-  }
+// géométrie de la roue (repère SVG 0..1000, angle horaire depuis le haut)
+const RB = { cx: 500, cy: 500, R0: 410, R1: 322, R2: 238, R3: 156, R4: 80 };
+const rbAngle = (i, n) => (i + 0.5) * 360 / n;
+function rbPt(r, aDeg) {
+  const a = aDeg * Math.PI / 180;
+  return [RB.cx + r * Math.sin(a), RB.cy - r * Math.cos(a)];
+}
+// coude radial : segment radial enfant→rayon parent, puis arc jusqu'à l'angle du parent
+function rbElbow(cA, cR, pA, pR) {
+  const [x1, y1] = rbPt(cR, cA);
+  const [x2, y2] = rbPt(pR, cA);
+  const [x3, y3] = rbPt(pR, pA);
+  const sweep = pA >= cA ? 1 : 0;
+  return `M${x1.toFixed(1)} ${y1.toFixed(1)} L${x2.toFixed(1)} ${y2.toFixed(1)} A${pR} ${pR} 0 0 ${sweep} ${x3.toFixed(1)} ${y3.toFixed(1)}`;
+}
+// vainqueur d'un match (réel sinon mon prono), seulement si c'est une équipe connue
+function predAdv(id) {
+  const m = M(id);
+  if (!m) return null;
+  const real = actualAdvancer(m);
+  if (real) return team(real) ? real : null;
+  const p = myPick(id);
+  if (!p || p[0] === p[1]) return null;
+  const win = p[0] > p[1] ? m.home : m.away;
+  return team(win) ? win : null;
+}
+// libellé court d'un emplacement encore inconnu (1A, 2B, meilleur 3ᵉ…)
+function rbCode(raw) {
+  let x;
+  if ((x = String(raw).match(/^([12])([A-L])$/))) return x[1] + x[2];
+  if (String(raw)[0] === '3') return '3ᵉ';
+  return String(raw).slice(0, 3);
 }
 
 function renderBracket() {
-  const caps = I18N[LANG].caps;
-  const order = ['r32', 'r16', 'qf', 'sf'];
-  const left = `<div class="bkt-half bkL">${order.map((k) => bcol(SIDE_L[k], caps[k])).join('')}</div>`;
-  const right = `<div class="bkt-half bkR">${[...order].reverse().map((k) => bcol(SIDE_R[k], caps[k])).join('')}</div>`;
-  const center = `<div class="bcol"><div class="bcap">${t('finalCap')}</div><div class="bbody center">
-      ${champHtml()}
-      ${bmCard(104, 'stub-l stub-r')}
-      <div><div class="third-cap">${t('thirdCap')}</div>${bmCard(103)}</div>
-    </div></div>`;
-  $('#bracket').innerHTML = left + center + right;
-  if (!S.bktCentered) centerBracket();
+  const wrap = $('#bracket');
+  if (!wrap) { renderRbktDetail(); return; }
+  // SIDE_R sur le demi-cercle droit, SIDE_L sur le gauche → les deux demi-tableaux se rejoignent au centre
+  const r32 = [...SIDE_R.r32, ...SIDE_L.r32]; // 16 matchs
+  const r16 = [...SIDE_R.r16, ...SIDE_L.r16]; // 8
+  const qf = [...SIDE_R.qf, ...SIDE_L.qf];    // 4
+  const sf = [...SIDE_R.sf, ...SIDE_L.sf];    // 2
+  const sel = S.rbktSel;
+
+  const defs = [], links = [], nodes = [];
+  let nid = 0;
+  const flagNode = (x, y, r, code) => {
+    const cid = 'rbc' + (nid++);
+    defs.push(`<clipPath id="${cid}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}"/></clipPath>`);
+    return `<image href="https://flagcdn.com/h80/${code}.png" x="${(x - r).toFixed(1)}" y="${(y - r).toFixed(1)}" width="${(2 * r).toFixed(1)}" height="${(2 * r).toFixed(1)}" clip-path="url(#${cid})" preserveAspectRatio="xMidYMid slice"/><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" class="rn-ring"/>`;
+  };
+
+  // chaque anneau : nœuds (équipe/jeton) + le match dans lequel chacun joue
+  const rings = [
+    { R: RB.R0, n: 32, nr: 22, leaf: true, teamOf: (i) => { const m = M(r32[i >> 1]); return m ? (i % 2 ? m.away : m.home) : null; }, matchOf: (i) => r32[i >> 1] },
+    { R: RB.R1, n: 16, nr: 17.5, leaf: false, teamOf: (i) => predAdv(r32[i]), matchOf: (i) => r16[i >> 1] },
+    { R: RB.R2, n: 8, nr: 16.5, leaf: false, teamOf: (i) => predAdv(r16[i]), matchOf: (i) => qf[i >> 1] },
+    { R: RB.R3, n: 4, nr: 15.5, leaf: false, teamOf: (i) => predAdv(qf[i]), matchOf: (i) => sf[i >> 1] },
+    { R: RB.R4, n: 2, nr: 15, leaf: false, teamOf: (i) => predAdv(sf[i]), matchOf: () => 104 },
+  ];
+
+  // liens (dessinés sous les nœuds)
+  for (let k = 0; k < rings.length; k++) {
+    const c = rings[k], par = rings[k + 1];
+    for (let i = 0; i < c.n; i++) {
+      const cA = rbAngle(i, c.n);
+      const selCls = c.matchOf(i) === sel ? ' sel' : '';
+      if (par) links.push(`<path class="rn-link${selCls}" d="${rbElbow(cA, c.R, rbAngle(i >> 1, par.n), par.R)}"/>`);
+      else { const [x1, y1] = rbPt(c.R, cA); links.push(`<path class="rn-link${selCls}" d="M${x1.toFixed(1)} ${y1.toFixed(1)} L${RB.cx} ${RB.cy}"/>`); }
+    }
+  }
+
+  // nœuds
+  for (let k = 0; k < rings.length; k++) {
+    const rg = rings[k];
+    for (let i = 0; i < rg.n; i++) {
+      const a = rbAngle(i, rg.n);
+      const [x, y] = rbPt(rg.R, a);
+      const name = rg.teamOf(i);
+      const tm = name ? team(name) : null;
+      const selCls = rg.matchOf(i) === sel ? ' sel' : '';
+      let inner, lbl = '';
+      if (tm) {
+        inner = flagNode(x, y, rg.nr, tm.code);
+        if (rg.leaf) { const [lx, ly] = rbPt(rg.R + 30, a); lbl = `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" dy="0.34em" class="rn-lbl">${esc(tm.tri)}</text>`; }
+      } else if (rg.leaf) {
+        const m = M(r32[i >> 1]);
+        inner = `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${rg.nr}" class="rn-ph"/><text x="${x.toFixed(1)}" y="${y.toFixed(1)}" dy="0.34em" class="rn-pht">${esc(m ? rbCode(i % 2 ? m.away : m.home) : '?')}</text>`;
+      } else inner = `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5" class="rn-dot"/>`;
+      nodes.push(`<g class="rn${selCls}" data-rbkt-match="${rg.matchOf(i)}">${inner}${lbl}</g>`);
+    }
+  }
+
+  // centre : trophée ou drapeau du champion
+  const champName = predAdv(104);
+  const ctm = champName ? team(champName) : null;
+  const centerInner = ctm
+    ? flagNode(RB.cx, RB.cy, 40, ctm.code)
+    : '<text x="500" y="502" dy="0.34em" class="rn-trophy">🏆</text>';
+  nodes.push(`<g class="rn rn-cwrap${sel === 104 ? ' sel' : ''}" data-rbkt-match="104"><circle cx="500" cy="500" r="46" class="rn-center"/>${centerInner}</g>`);
+
+  wrap.innerHTML = `<svg class="rbkt" viewBox="0 0 1000 1000" role="img" aria-label="${esc(t('bracketH2'))}">
+    <defs>${defs.join('')}</defs>
+    <g class="rn-links">${links.join('')}</g>
+    ${nodes.join('')}
+  </svg>`;
+  renderRbktDetail();
+}
+
+function renderRbktDetail() {
+  const el = $('#rbkt-detail');
+  if (!el) return;
+  const id = S.rbktSel;
+  if (id != null && M(id)) {
+    el.classList.add('open');
+    el.innerHTML = `<button class="rbkt-back" data-rbkt-match="">${t('rbktBack')}</button>${matchItem(M(id), true)}`;
+  } else {
+    el.classList.remove('open');
+    el.innerHTML = `<div class="rbkt-default">${champHtml()}<p class="rbkt-tip">${t('rbktTip')}</p><button class="pill-ghost" data-rbkt-match="103">${t('rbktThird')}</button></div>`;
+  }
+}
+
+function rbktSelect(id) {
+  S.rbktSel = (id == null || !M(id)) ? null : id;
+  renderBracket();
+  if (S.rbktSel != null) $('#rbkt-detail')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
 // ---------- groupes ----------
@@ -946,7 +1017,6 @@ function switchView(v) {
   localStorage.setItem('pronos26:view', v);
   document.body.dataset.view = v;
   renderTabs();
-  if (v === 'apercu' || v === 'arbre') setTimeout(centerBracket, 30);
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
@@ -1278,6 +1348,13 @@ document.addEventListener('click', (e) => {
   // ferme les dropdowns champion ouverts si on clique ailleurs
   if (!e.target.closest('.champ-dd')) {
     document.querySelectorAll('.champ-dd-panel:not([hidden])').forEach((p) => { p.hidden = true; });
+  }
+  // tableau radial : sélectionne le match d'un nœud (ou revient à la roue si data vide)
+  const rbn = e.target.closest('[data-rbkt-match]');
+  if (rbn && !e.target.closest('input')) {
+    const v = rbn.dataset.rbktMatch;
+    rbktSelect(v === '' ? null : Number(v));
+    return;
   }
   // tooltip de badge : tap pour afficher (mobile), ferme les autres
   const badge = e.target.closest('.board-row .badge');

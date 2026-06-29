@@ -255,54 +255,39 @@ input.bi:focus { outline: none; border-color: var(--blue); }
 
 .gm-live { color: var(--live); font-weight: 700; font-size: 11px; }
 
-/* ---------- arbre ---------- */
-.bkt-scroll { overflow-x: auto; padding: 14px 16px 18px; }
-.bkt { display: flex; gap: 18px; min-width: 1550px; }
-.bkt-half { display: flex; gap: 18px; }
-.bcol { width: 154px; flex: none; display: flex; flex-direction: column; }
-.bcap { text-align: center; color: var(--muted); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; height: 20px; white-space: nowrap; overflow: hidden; }
-.bbody { height: 660px; display: flex; flex-direction: column; justify-content: space-around; }
-.bbody.center { justify-content: center; gap: 16px; }
-.duo { position: relative; flex: 1; display: flex; flex-direction: column; justify-content: space-around; }
+/* ---------- tableau radial (roue, inspiré de glaze/saj) ---------- */
+.rbkt-wrap { padding: 4px 10px 16px; }
+svg.rbkt { display: block; width: 100%; height: auto; max-width: 680px; margin: 0 auto; overflow: visible; }
 
-.bkL .duo:not(.solo)::after {
-  content: ''; position: absolute; right: -18px; top: 25%; bottom: 25%; width: 17px;
-  border: 2px solid var(--line2); border-left: none; border-radius: 0 10px 10px 0;
-}
-.bkR .duo:not(.solo)::after {
-  content: ''; position: absolute; left: -18px; top: 25%; bottom: 25%; width: 17px;
-  border: 2px solid var(--line2); border-right: none; border-radius: 10px 0 0 10px;
-}
-.bkL .bcol:not(:first-child) .bm::before,
-.bm.stub-l::before {
-  content: ''; position: absolute; left: -18px; top: 50%; width: 18px; height: 2px; background: var(--line2);
-}
-.bkR .bcol:not(:last-child) .bm::after,
-.bm.stub-r::after {
-  content: ''; position: absolute; right: -18px; top: 50%; width: 18px; height: 2px; background: var(--line2);
-}
+.rn-link { fill: none; stroke: var(--line2); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; opacity: .65; }
+.rn-link.sel { stroke: var(--live); stroke-width: 3.5; opacity: 1; }
 
-.bm {
-  position: relative; background: var(--card);
-  border: 1px solid var(--line); border-radius: 10px;
-  padding: 4px 6px 3px; font-size: 12.5px;
-}
-.bm.done { background: var(--surf); }
-.bm-row { display: flex; align-items: center; gap: 5px; height: 24px; }
-.bm-row .tn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
-.bm-row.ph .tn { color: var(--muted); font-weight: 400; font-size: 11px; }
-.bm-row.win .tn, .bm-row.win .sc { color: var(--live); }
-.bm-row.lose .tn { color: var(--muted); font-weight: 500; }
-.bm-meta { display: flex; justify-content: space-between; align-items: center; gap: 4px; color: var(--muted); font-size: 9.5px; height: 13px; overflow: hidden; }
-.bm-meta span { white-space: nowrap; }
-.bm-meta span:last-child { overflow: hidden; text-overflow: ellipsis; }
-.bm .chip { position: absolute; top: -7px; right: -6px; }
-.bm input.bi { width: 27px; height: 24px; font-size: 12.5px; border-radius: 7px; }
+.rn { cursor: pointer; }
+.rn-ring { fill: none; stroke: var(--line2); stroke-width: 2; }
+.rn-ph { fill: var(--surf); stroke: var(--line2); stroke-width: 1.5; }
+.rn-pht { fill: var(--muted); font-size: 13px; font-weight: 800; text-anchor: middle; }
+.rn-dot { fill: var(--line2); }
+.rn-lbl { fill: var(--muted); font-size: 15px; font-weight: 700; letter-spacing: .3px; text-anchor: middle; }
+.rn-center { fill: var(--gold-soft); stroke: var(--gold); stroke-width: 2; }
+.rn-trophy { font-size: 38px; text-anchor: middle; }
+
+/* survol / sélection */
+.rn:hover .rn-ring, .rn.sel .rn-ring { stroke: var(--gold); stroke-width: 3.5; }
+.rn:hover .rn-ph, .rn.sel .rn-ph { stroke: var(--gold); }
+.rn:hover .rn-pht, .rn.sel .rn-pht, .rn:hover .rn-lbl, .rn.sel .rn-lbl { fill: var(--ink); }
+.rn:hover .rn-dot, .rn.sel .rn-dot { fill: var(--gold); }
+
+/* panneau détail : match sélectionné ou champion + astuce */
+.rbkt-detail { padding: 2px 12px 0; }
+.rbkt-detail.open { padding: 6px 12px 4px; }
+.rbkt-detail .mi-wrap { max-width: 430px; margin: 0 auto; border: 1px solid var(--line); border-radius: 12px; }
+.rbkt-default { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 6px 0 4px; }
+.rbkt-default .champ { width: 100%; max-width: 280px; }
+.rbkt-tip { color: var(--muted); font-size: 12.5px; margin: 0; text-align: center; }
+.rbkt-back { background: none; border: none; color: var(--muted); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 2px 0 6px; }
+.rbkt-back:hover { color: var(--ink); }
 
 .sc { width: 26px; text-align: center; font-weight: 800; font-variant-numeric: tabular-nums; flex: none; }
-.sc.mine { color: var(--live); opacity: .85; font-weight: 700; }
-.sc.dim { color: var(--line2); font-weight: 600; }
-.sc.live, .fin.live { color: var(--live); }
 
 .champ {
   text-align: center; padding: 12px 6px 14px;
@@ -311,7 +296,6 @@ input.bi:focus { outline: none; border-color: var(--blue); }
 .champ .t { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--gold); margin-bottom: 6px; }
 .champ .n { font-weight: 700; font-size: 14px; margin-top: 5px; }
 .champ .q { color: var(--muted); font-size: 12px; }
-.third-cap { text-align: center; color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; margin: 2px 0; }
 
 /* ---------- groupes ---------- */
 .groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; padding: 14px 16px 18px; }
@@ -677,7 +661,6 @@ table.standings tr.q td { background: color-mix(in srgb, var(--green-soft) 55%, 
   .mi-side { width: 76px; }
   .groups { grid-template-columns: 1fr; padding: 12px 12px 16px; }
   input.bi { width: 54px; height: 48px; font-size: 21px; }
-  .bm input.bi { width: 27px; height: 24px; }
   .card-h { padding: 14px 14px 2px; }
 }
 
