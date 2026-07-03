@@ -328,6 +328,20 @@ table.standings tr.q td { background: color-mix(in srgb, var(--green-soft) 55%, 
 .board-row .nm { font-weight: 600; min-width: 0; }
 .board-row .avatar { width: 30px; height: 30px; }
 
+/* ex aequo : médaille partagée, joueurs côte à côte */
+.board-row.tie { grid-template-columns: 30px minmax(0, 1fr) auto; }
+.tie-players { display: flex; align-items: stretch; gap: 10px; min-width: 0; flex-wrap: wrap; }
+.tie-p { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1 1 0; border-radius: 10px; padding: 2px 6px 2px 2px; }
+.tie-p.me { background: var(--green-soft); }
+.tie-p .nm { font-weight: 600; min-width: 0; }
+.tie-sep { flex: none; width: 1px; background: var(--line); margin: 2px 0; }
+/* écran étroit : on empile les ex aequo (médaille et points restent partagés) */
+@media (max-width: 640px) {
+  .tie-players { flex-direction: column; gap: 4px; }
+  .tie-p { flex: none; }
+  .tie-sep { width: auto; height: 1px; margin: 0; }
+}
+
 /* ---- avatars (photo de profil devant le nom) ---- */
 .avatar {
   flex: none; width: 22px; height: 22px; border-radius: 50%; object-fit: cover;

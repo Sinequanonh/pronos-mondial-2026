@@ -942,14 +942,41 @@ function renderBoard() {
   const mvpHtml = mvp
     ? `<div class="mvp"><span class="mvp-star">🌟</span><div class="mvp-txt"><b>${t('mvpDay')}</b> · ${esc(cap1(fmtDay(mvp.date)))}<br>${mvp.winners.map(esc).join(' & ')} <span class="mvp-pts">${t('mvpPts', mvp.pts)}</span></div></div>`
     : '';
-  const medal = (i, pts) => (pts > 0 && i < 3 ? ['👑', '🥈', '🥉'][i] : i + 1);
-  $('#board').innerHTML = mvpHtml + lb.map((r, i) => `
+  // ex aequo (mêmes points) : même rang, même médaille, côte à côte ; le rang suivant saute (1, 1, 3…)
+  const groups = [];
+  for (const r of lb) {
+    const g = groups[groups.length - 1];
+    if (g && g.pts === r.pts) g.rows.push(r);
+    else groups.push({ pts: r.pts, rows: [r] });
+  }
+  const medal = (rk, pts) => (pts > 0 && rk <= 3 ? ['👑', '🥈', '🥉'][rk - 1] : rk);
+  const playerCell = (r) => `
+      <div class="tie-p ${r.isMe ? 'me' : ''}">
+        ${avatarHtml(r.name)}
+        <span class="nm"><span class="nm-line"><span class="nm-name">${esc(r.name)}</span>${badgesHtml(r.badges)}</span><small>${t('exactSub', r.exact, r.outcome)}${r.champ ? ` · 🏆 +${(S.data.champion && S.data.champion.points) || 10}` : ''}</small></span>
+      </div>`;
+  let rank = 1;
+  $('#board').innerHTML = mvpHtml + groups.map((g) => {
+    const rk = rank;
+    rank += g.rows.length;
+    const rkCls = g.pts > 0 && rk <= 3 ? 'rk' + rk : '';
+    if (g.rows.length === 1) {
+      const r = g.rows[0];
+      return `
     <div class="board-row ${r.isMe ? 'me' : ''}">
-      <span class="rk ${r.pts > 0 && i < 3 ? 'rk' + (i + 1) : ''}">${medal(i, r.pts)}</span>
+      <span class="rk ${rkCls}">${medal(rk, g.pts)}</span>
       ${avatarHtml(r.name)}
       <span class="nm"><span class="nm-line"><span class="nm-name">${esc(r.name)}</span>${badgesHtml(r.badges)}</span><small>${t('exactSub', r.exact, r.outcome)}${r.champ ? ` · 🏆 +${(S.data.champion && S.data.champion.points) || 10}` : ''}</small></span>
-      <span class="pt">${r.pts}<small> pt${r.pts > 1 ? 's' : ''}</small></span>
-    </div>`).join('');
+      <span class="pt">${g.pts}<small> pt${g.pts > 1 ? 's' : ''}</small></span>
+    </div>`;
+    }
+    return `
+    <div class="board-row tie">
+      <span class="rk ${rkCls}">${medal(rk, g.pts)}</span>
+      <div class="tie-players">${g.rows.map(playerCell).join('<div class="tie-sep"></div>')}</div>
+      <span class="pt">${g.pts}<small> pt${g.pts > 1 ? 's' : ''}</small></span>
+    </div>`;
+  }).join('');
 }
 
 function renderRules() {
