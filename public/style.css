@@ -260,6 +260,7 @@ input.bi:focus { outline: none; border-color: var(--blue); }
 svg.rbkt { display: block; width: 100%; height: auto; max-width: 680px; margin: 0 auto; overflow: visible; }
 
 .rn-link { fill: none; stroke: var(--line2); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; opacity: .65; }
+.rn-link.adv { stroke: color-mix(in srgb, var(--ink) 75%, transparent); stroke-width: 2.6; opacity: 1; }
 .rn-link.sel { stroke: var(--live); stroke-width: 3.5; opacity: 1; }
 
 .rn { cursor: pointer; }
@@ -270,6 +271,14 @@ svg.rbkt { display: block; width: 100%; height: auto; max-width: 680px; margin: 
 .rn-lbl { fill: var(--muted); font-size: 15px; font-weight: 700; letter-spacing: .3px; text-anchor: middle; }
 .rn-center { fill: var(--gold-soft); stroke: var(--gold); stroke-width: 2; }
 .rn-trophy { font-size: 38px; text-anchor: middle; }
+
+/* éliminé pour de vrai : drapeau grisé */
+.rn.out image { filter: grayscale(1) brightness(.62); }
+.rn.out .rn-ring { stroke: var(--line); }
+.rn.out .rn-lbl { opacity: .5; }
+/* place issue de mon prono (pas encore un résultat) : cercle pointillé */
+.rn.guess .rn-ring { stroke-dasharray: 5 4; }
+.rn.guess image { opacity: .85; }
 
 /* survol / sélection */
 .rn:hover .rn-ring, .rn.sel .rn-ring { stroke: var(--gold); stroke-width: 3.5; }
@@ -286,6 +295,18 @@ svg.rbkt { display: block; width: 100%; height: auto; max-width: 680px; margin: 
 .rbkt-tip { color: var(--muted); font-size: 12.5px; margin: 0; text-align: center; }
 .rbkt-back { background: none; border: none; color: var(--muted); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 2px 0 6px; }
 .rbkt-back:hover { color: var(--ink); }
+
+/* tooltip de la roue (suit la souris) */
+.rn-tt {
+  position: fixed; z-index: 220; pointer-events: none;
+  background: var(--card); border: 1px solid var(--line2); border-radius: 10px;
+  padding: 8px 11px; max-width: 250px; font-size: 12.5px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .3);
+}
+.rn-tt-stage { color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; margin-bottom: 2px; }
+.rn-tt-teams { font-weight: 700; white-space: nowrap; }
+.rn-tt-sub { color: var(--muted); margin-top: 1px; }
+.rn-tt-mine { color: var(--muted); font-size: 12px; margin-top: 4px; }
 
 .sc { width: 26px; text-align: center; font-weight: 800; font-variant-numeric: tabular-nums; flex: none; }
 

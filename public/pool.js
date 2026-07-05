@@ -579,23 +579,27 @@ function renderBracket() {
     return `<image href="https://flagcdn.com/h80/${code}.png" x="${(x - r).toFixed(1)}" y="${(y - r).toFixed(1)}" width="${(2 * r).toFixed(1)}" height="${(2 * r).toFixed(1)}" clip-path="url(#${cid})" preserveAspectRatio="xMidYMid slice"/><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" class="rn-ring"/>`;
   };
 
-  // chaque anneau : nœuds (équipe/jeton) + le match dans lequel chacun joue
+  // chaque anneau : nœuds (équipe/jeton) + le match dans lequel chacun joue ; srcOf = match d'où vient l'équipe du cran
   const rings = [
-    { R: RB.R0, n: 32, nr: 22, leaf: true, teamOf: (i) => { const m = M(r32[i >> 1]); return m ? (i % 2 ? m.away : m.home) : null; }, matchOf: (i) => r32[i >> 1] },
-    { R: RB.R1, n: 16, nr: 17.5, leaf: false, teamOf: (i) => predAdv(r32[i]), matchOf: (i) => r16[i >> 1] },
-    { R: RB.R2, n: 8, nr: 16.5, leaf: false, teamOf: (i) => predAdv(r16[i]), matchOf: (i) => qf[i >> 1] },
-    { R: RB.R3, n: 4, nr: 15.5, leaf: false, teamOf: (i) => predAdv(qf[i]), matchOf: (i) => sf[i >> 1] },
-    { R: RB.R4, n: 2, nr: 15, leaf: false, teamOf: (i) => predAdv(sf[i]), matchOf: () => 104 },
+    { R: RB.R0, n: 32, nr: 22, leaf: true, teamOf: (i) => { const m = M(r32[i >> 1]); return m ? (i % 2 ? m.away : m.home) : null; }, matchOf: (i) => r32[i >> 1], srcOf: () => null },
+    { R: RB.R1, n: 16, nr: 17.5, leaf: false, teamOf: (i) => predAdv(r32[i]), matchOf: (i) => r16[i >> 1], srcOf: (i) => r32[i] },
+    { R: RB.R2, n: 8, nr: 16.5, leaf: false, teamOf: (i) => predAdv(r16[i]), matchOf: (i) => qf[i >> 1], srcOf: (i) => r16[i] },
+    { R: RB.R3, n: 4, nr: 15.5, leaf: false, teamOf: (i) => predAdv(qf[i]), matchOf: (i) => sf[i >> 1], srcOf: (i) => qf[i] },
+    { R: RB.R4, n: 2, nr: 15, leaf: false, teamOf: (i) => predAdv(sf[i]), matchOf: () => 104, srcOf: (i) => sf[i] },
   ];
+  // vainqueur RÉEL du match joué à ce cran (sert au grisage des éliminés et au chemin lumineux)
+  const realAdv = (mid) => { const m = M(mid); const a = m ? actualAdvancer(m) : null; return a && team(a) ? a : null; };
 
-  // liens (dessinés sous les nœuds)
+  // liens (dessinés sous les nœuds) : le trajet du vainqueur réel s'illumine
   for (let k = 0; k < rings.length; k++) {
     const c = rings[k], par = rings[k + 1];
     for (let i = 0; i < c.n; i++) {
       const cA = rbAngle(i, c.n);
+      const name = c.teamOf(i);
+      const advCls = name && realAdv(c.matchOf(i)) === name ? ' adv' : '';
       const selCls = c.matchOf(i) === sel ? ' sel' : '';
-      if (par) links.push(`<path class="rn-link${selCls}" d="${rbElbow(cA, c.R, rbAngle(i >> 1, par.n), par.R)}"/>`);
-      else { const [x1, y1] = rbPt(c.R, cA); links.push(`<path class="rn-link${selCls}" d="M${x1.toFixed(1)} ${y1.toFixed(1)} L${RB.cx} ${RB.cy}"/>`); }
+      if (par) links.push(`<path class="rn-link${advCls}${selCls}" d="${rbElbow(cA, c.R, rbAngle(i >> 1, par.n), par.R)}"/>`);
+      else { const [x1, y1] = rbPt(c.R, cA); links.push(`<path class="rn-link${advCls}${selCls}" d="M${x1.toFixed(1)} ${y1.toFixed(1)} L${RB.cx} ${RB.cy}"/>`); }
     }
   }
 
@@ -608,6 +612,10 @@ function renderBracket() {
       const name = rg.teamOf(i);
       const tm = name ? team(name) : null;
       const selCls = rg.matchOf(i) === sel ? ' sel' : '';
+      // éliminé pour de vrai à ce cran → grisé ; place obtenue via mon prono (pas un résultat) → cerclé pointillé
+      const advHere = tm ? realAdv(rg.matchOf(i)) : null;
+      const outCls = tm && advHere && advHere !== name ? ' out' : '';
+      const guessCls = tm && !rg.leaf && !realAdv(rg.srcOf(i)) ? ' guess' : '';
       let inner, lbl = '';
       if (tm) {
         inner = flagNode(x, y, rg.nr, tm.code);
@@ -616,17 +624,18 @@ function renderBracket() {
         const m = M(r32[i >> 1]);
         inner = `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${rg.nr}" class="rn-ph"/><text x="${x.toFixed(1)}" y="${y.toFixed(1)}" dy="0.34em" class="rn-pht">${esc(m ? rbCode(i % 2 ? m.away : m.home) : '?')}</text>`;
       } else inner = `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5" class="rn-dot"/>`;
-      nodes.push(`<g class="rn${selCls}" data-rbkt-match="${rg.matchOf(i)}">${inner}${lbl}</g>`);
+      nodes.push(`<g class="rn${selCls}${outCls}${guessCls}" data-rbkt-match="${rg.matchOf(i)}">${inner}${lbl}</g>`);
     }
   }
 
-  // centre : trophée ou drapeau du champion
+  // centre : trophée ou drapeau du champion (pointillé si issu de mon prono)
   const champName = predAdv(104);
   const ctm = champName ? team(champName) : null;
+  const champGuess = ctm && !realAdv(104) ? ' guess' : '';
   const centerInner = ctm
     ? flagNode(RB.cx, RB.cy, 40, ctm.code)
     : '<text x="500" y="502" dy="0.34em" class="rn-trophy">🏆</text>';
-  nodes.push(`<g class="rn rn-cwrap${sel === 104 ? ' sel' : ''}" data-rbkt-match="104"><circle cx="500" cy="500" r="46" class="rn-center"/>${centerInner}</g>`);
+  nodes.push(`<g class="rn rn-cwrap${sel === 104 ? ' sel' : ''}${champGuess}" data-rbkt-match="104"><circle cx="500" cy="500" r="46" class="rn-center"/>${centerInner}</g>`);
 
   wrap.innerHTML = `<svg class="rbkt" viewBox="0 0 1000 1000" role="img" aria-label="${esc(t('bracketH2'))}">
     <defs>${defs.join('')}</defs>
@@ -651,9 +660,49 @@ function renderRbktDetail() {
 
 function rbktSelect(id) {
   S.rbktSel = (id == null || !M(id)) ? null : id;
+  rbTTHide();
   renderBracket();
   if (S.rbktSel != null) $('#rbkt-detail')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
+
+// ---------- tooltip de la roue (survol souris uniquement) ----------
+let rbTT = null;
+function rbTTHtml(m) {
+  const th = team(m.home), ta = team(m.away);
+  const stage = m.grp ? t('group', m.grp) : (t('stageShort')[m.stage] || '');
+  let sub;
+  if (m.finished) sub = `<b>${m.hs} – ${m.as}</b> · ${t('finished')}`;
+  else if (hasLiveScore(m)) sub = `<b>${m.lhs} – ${m.las}</b> · ${esc(m.lmin || 'LIVE')}`;
+  else sub = esc(fmtMeta(m.date));
+  const my = myPick(m.id);
+  const mine = my ? `<div class="rn-tt-mine">${t('mine')} : ${my[0]}–${my[1]}${m.finished ? ' ' + chipHtml(ptsOf(m, my)) : ''}</div>` : '';
+  return `<div class="rn-tt-stage">${esc(stage)}</div>
+    <div class="rn-tt-teams">${esc(th ? tNm(th) : phLabel(m, 'h'))} – ${esc(ta ? tNm(ta) : phLabel(m, 'a'))}</div>
+    <div class="rn-tt-sub">${sub}</div>${mine}`;
+}
+function rbTTMove(e) {
+  if (!rbTT) return;
+  const x = Math.min(e.clientX + 14, window.innerWidth - rbTT.offsetWidth - 8);
+  const y = Math.min(e.clientY + 14, window.innerHeight - rbTT.offsetHeight - 8);
+  rbTT.style.left = x + 'px';
+  rbTT.style.top = y + 'px';
+}
+function rbTTHide() { if (rbTT) rbTT.hidden = true; }
+document.addEventListener('mouseover', (e) => {
+  if (!matchMedia('(hover: hover)').matches) return;
+  const g = e.target.closest && e.target.closest('#bracket [data-rbkt-match]');
+  const m = g && g.dataset.rbktMatch !== '' ? M(Number(g.dataset.rbktMatch)) : null;
+  if (!m) { rbTTHide(); return; }
+  if (!rbTT) { rbTT = document.createElement('div'); rbTT.className = 'rn-tt'; document.body.appendChild(rbTT); }
+  rbTT.innerHTML = rbTTHtml(m);
+  rbTT.hidden = false;
+  rbTTMove(e);
+});
+document.addEventListener('mousemove', (e) => { if (rbTT && !rbTT.hidden) rbTTMove(e); });
+document.addEventListener('mouseout', (e) => {
+  if (e.target.closest && e.target.closest('#bracket [data-rbkt-match]')) rbTTHide();
+});
+document.addEventListener('scroll', rbTTHide, true);
 
 // ---------- groupes ----------
 function standingsHtml(ms) {
