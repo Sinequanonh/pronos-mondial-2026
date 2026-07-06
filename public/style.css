@@ -272,8 +272,8 @@ svg.rbkt { display: block; width: 100%; height: auto; max-width: 680px; margin: 
 .rn-center { fill: var(--gold-soft); stroke: var(--gold); stroke-width: 2; }
 .rn-trophy { font-size: 38px; text-anchor: middle; }
 
-/* éliminé pour de vrai : drapeau grisé */
-.rn.out image { filter: grayscale(1) brightness(.62); }
+/* éliminé pour de vrai : drapeau assombri/désaturé (les couleurs restent devinables) */
+.rn.out image { filter: grayscale(.65) brightness(.62) saturate(.75); }
 .rn.out .rn-ring { stroke: var(--line); }
 .rn.out .rn-lbl { opacity: .5; }
 /* place issue de mon prono (pas encore un résultat) : cercle pointillé */
